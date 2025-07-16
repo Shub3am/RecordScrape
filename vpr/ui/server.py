@@ -5,8 +5,7 @@ Web UI server for Video Product Recorder.
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import logging
-import threading
-from vpr.automation.browser import BrowserController
+from vpr.automation.browser_selenium import BrowserController
 
 app = Flask(__name__)
 CORS(app)
@@ -17,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 # Global browser instance
 browser_instance = None
-browser_lock = threading.Lock()
 
 
 @app.route("/")
@@ -38,21 +36,21 @@ def launch_browser():
     browser_type = data.get("browser_type", "chromium")
 
     try:
-        with browser_lock:
-            if browser_instance is not None:
-                return jsonify({"error": "Browser already running"}), 400
+        if browser_instance is not None:
+            return jsonify({"error": "Browser already running"}), 400
 
-            browser_instance = BrowserController(
-                headless=headless,
-                viewport_width=viewport_width,
-                viewport_height=viewport_height,
-                browser_type=browser_type,
-            )
-            browser_instance.launch()
+        browser_instance = BrowserController(
+            headless=headless,
+            viewport_width=viewport_width,
+            viewport_height=viewport_height,
+            browser_type=browser_type,
+        )
+        browser_instance.launch()
 
         return jsonify({"status": "success", "message": "Browser launched"})
     except Exception as e:
         logger.error(f"Error launching browser: {e}")
+        browser_instance = None
         return jsonify({"error": str(e)}), 500
 
 
@@ -62,16 +60,16 @@ def close_browser():
     global browser_instance
 
     try:
-        with browser_lock:
-            if browser_instance is None:
-                return jsonify({"error": "No browser running"}), 400
+        if browser_instance is None:
+            return jsonify({"error": "No browser running"}), 400
 
-            browser_instance.close()
-            browser_instance = None
+        browser_instance.close()
+        browser_instance = None
 
         return jsonify({"status": "success", "message": "Browser closed"})
     except Exception as e:
         logger.error(f"Error closing browser: {e}")
+        browser_instance = None
         return jsonify({"error": str(e)}), 500
 
 
@@ -88,11 +86,10 @@ def navigate():
         return jsonify({"error": "URL is required"}), 400
 
     try:
-        with browser_lock:
-            if browser_instance is None:
-                return jsonify({"error": "Browser not running"}), 400
+        if browser_instance is None:
+            return jsonify({"error": "Browser not running"}), 400
 
-            browser_instance.navigate_to(url, wait_until=wait_until)
+        browser_instance.navigate_to(url, wait_until=wait_until)
 
         return jsonify({"status": "success", "message": f"Navigated to {url}"})
     except Exception as e:
@@ -112,11 +109,10 @@ def click():
         return jsonify({"error": "Selector is required"}), 400
 
     try:
-        with browser_lock:
-            if browser_instance is None:
-                return jsonify({"error": "Browser not running"}), 400
+        if browser_instance is None:
+            return jsonify({"error": "Browser not running"}), 400
 
-            browser_instance.click(selector)
+        browser_instance.click(selector)
 
         return jsonify({"status": "success", "message": f"Clicked {selector}"})
     except Exception as e:
@@ -137,11 +133,10 @@ def fill():
         return jsonify({"error": "Selector and text are required"}), 400
 
     try:
-        with browser_lock:
-            if browser_instance is None:
-                return jsonify({"error": "Browser not running"}), 400
+        if browser_instance is None:
+            return jsonify({"error": "Browser not running"}), 400
 
-            browser_instance.fill(selector, text)
+        browser_instance.fill(selector, text)
 
         return jsonify({"status": "success", "message": f"Filled {selector}"})
     except Exception as e:
@@ -176,8 +171,7 @@ def status():
     """Get browser status."""
     global browser_instance
 
-    with browser_lock:
-        is_running = browser_instance is not None
+    is_running = browser_instance is not None
 
     return jsonify({"running": is_running})
 
