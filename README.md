@@ -1,71 +1,116 @@
-# Video Product Recording Tool
+# Visual Data Scraper
 
-An automated tool for creating product demonstration videos using browser automation, screen recording, and text-to-speech.
+A powerful tool for recording browser interactions and automating data extraction through visual session replay.
 
-## 🚀 Quick Start
+## Features
 
-### Setup
+- 🎥 **Visual Recording**: Record your browser interactions in real-time
+- 🎯 **Element Selection**: Visually select DOM elements for data extraction
+- 🔄 **Automated Replay**: Replay sessions in headless mode for data scraping
+- ⏰ **Scheduling**: Set up periodic scraping with customizable intervals
+- 📊 **Dashboard**: Modern web interface for managing sessions and schedules
+- 💾 **Data Export**: Export scraped data in JSON/CSV formats
 
-1. Create a virtual environment:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Web Dashboard                         │
+│              (Flask + HTML/CSS/JS)                       │
+└─────────────────┬───────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────┐
+│                   Flask API Server                       │
+│  /api/sessions, /api/schedules, /api/data              │
+└────┬────────────────────────────────────────────┬───────┘
+     │                                             │
+     ▼                                             ▼
+┌─────────────────┐                    ┌──────────────────┐
+│   Recorder      │                    │    Replayer      │
+│  (Selenium UI)  │                    │  (Headless)      │
+└────┬────────────┘                    └────┬─────────────┘
+     │                                      │
+     ▼                                      ▼
+┌─────────────────────────────────────────────────────────┐
+│              Storage Layer (SQLite)                      │
+│  Sessions, Schedules, Extracted Data                    │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd RecordBrowser
+```
 
 2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   pip install flask flask-cors
-   ```
-
-3. Install Playwright browsers:
-   ```bash
-   playwright install
-   ```
-
-## 🎨 Web UI
-
-Launch the visual web interface:
-
 ```bash
-source .venv/bin/activate
-python run_ui.py
+pip install -r requirements.txt
 ```
 
-Then open http://localhost:5000 in your browser.
-
-### Features:
-- 🌐 Browser control (Chromium, Firefox, WebKit)
-- 🎯 Navigate to URLs
-- 👆 Click elements
-- ✍️ Fill forms
-- 📸 Take screenshots
-- 📊 Real-time activity logging
-
-## 🧪 Testing
-
-Run the test suite:
-
+3. Run the application:
 ```bash
-pytest tests/test_browser.py -v
+python app.py
 ```
 
-## 💻 Programmatic Usage
+4. Open your browser to `http://localhost:5000`
 
-```python
-from vpr.automation.browser import BrowserController
+## Usage
 
-with BrowserController(headless=False) as browser:
-    browser.navigate_to("https://example.com")
-    browser.screenshot("example.png")
+### Recording a Session
+
+1. Click **"Record New Session"** in the dashboard
+2. Enter the URL you want to scrape
+3. Browser opens - perform your actions (navigate, click, scroll)
+4. Use the visual selector overlay to mark elements for extraction
+5. Click **"Stop Recording"** to save the session
+
+### Replaying & Extracting Data
+
+1. Find your session in the **"Saved Sessions"** section
+2. Click **"Replay"** to run it once manually
+3. Extracted data appears in **"Data Exports"**
+4. Download as JSON or CSV
+
+### Scheduling Periodic Scraping
+
+1. Click **"Schedule"** on any saved session
+2. Set the frequency (minutes, hours, days)
+3. The scheduler automatically runs the session and saves data
+4. View scheduled jobs in the **"Schedules"** section
+
+## Project Structure
+
+```
+RecordBrowser/
+├── app.py                 # Flask application & API
+├── vpr/                   # Visual Page Recorder package
+│   ├── __init__.py
+│   ├── recorder.py        # Session recording engine
+│   ├── replayer.py        # Headless replay engine
+│   ├── storage.py         # Database management
+│   └── scheduler.py       # Background job scheduler
+├── static/
+│   ├── css/
+│   │   └── style.css      # Dashboard styles
+│   └── js/
+│       └── app.js         # Dashboard JavaScript
+├── templates/
+│   └── index.html         # Dashboard HTML
+└── requirements.txt
 ```
 
-## 📚 Examples
+## Technologies
 
-See `examples/basic_browser_usage.py` for more examples.
+- **Backend**: Python, Flask, Selenium WebDriver
+- **Frontend**: HTML5, CSS3, Vanilla JavaScript
+- **Database**: SQLite
+- **Scheduling**: APScheduler
+- **Browser Automation**: Selenium + WebDriver Manager
 
-## Development
+## License
 
-- Run tests: `pytest`
-- Format code: `black vpr/`
-- Lint code: `flake8 vpr/`
+MIT
