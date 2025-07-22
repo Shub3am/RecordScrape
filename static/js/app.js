@@ -213,6 +213,13 @@ function renderSessions(sessions) {
                 </div>
             </div>
             
+            <div style="padding: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                    <input type="checkbox" id="headless-${session.id}" style="cursor: pointer;">
+                    <span>Headless mode (faster, no browser window)</span>
+                </label>
+            </div>
+            
             <div class="card-actions">
                 <button class="btn btn-success btn-small" onclick="replaySession(${session.id})">
                     ▶️ Replay
@@ -232,13 +239,19 @@ function renderSessions(sessions) {
 }
 
 async function replaySession(sessionId) {
-    if (!confirm('Replay this session now?')) return;
+    const headlessCheckbox = document.getElementById(`headless-${sessionId}`);
+    const headless = headlessCheckbox ? headlessCheckbox.checked : false;
 
-    showNotification('Replaying session...', 'info');
+    const mode = headless ? 'headless mode' : 'visible browser';
+    if (!confirm(`Replay this session now in ${mode}?`)) return;
+
+    showNotification(`Replaying session in ${mode}...`, 'info');
 
     try {
         const response = await fetch(`${API_BASE}/sessions/${sessionId}/replay`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ headless })
         });
 
         const result = await response.json();
