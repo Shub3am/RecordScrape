@@ -158,13 +158,13 @@ class SessionReplayer:
             return None
     
     def _extract_data(self, selectors: List[Dict]) -> List[Dict]:
-        """Extract data from selected elements."""
+        """Extract data from selected elements by retrieving current content."""
         extracted = []
         
         for selector_info in selectors:
             try:
                 selector = selector_info.get("selector")
-                label = selector_info.get("label", "")
+                tag_name = selector_info.get("tagName", "")
                 attribute = selector_info.get("attribute", "textContent")
                 
                 # Find all matching elements
@@ -172,7 +172,7 @@ class SessionReplayer:
                 
                 for idx, element in enumerate(elements):
                     try:
-                        # Extract data based on attribute
+                        # Extract current data from element based on attribute
                         if attribute == "textContent":
                             value = element.text
                         elif attribute == "innerHTML":
@@ -181,14 +181,16 @@ class SessionReplayer:
                             value = element.get_attribute("href")
                         elif attribute == "src":
                             value = element.get_attribute("src")
+                        elif attribute == "value":
+                            value = element.get_attribute("value")
                         else:
                             value = element.get_attribute(attribute)
                         
                         if value and value.strip():
                             extracted.append({
                                 "selector": selector,
-                                "label": label,
                                 "value": value.strip(),
+                                "attribute": attribute,
                                 "index": idx,
                                 "tag": element.tag_name
                             })
