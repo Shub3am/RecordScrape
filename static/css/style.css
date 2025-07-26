@@ -30,29 +30,148 @@ body {
 }
 
 /* Header */
-header {
+.main-header {
     text-align: center;
     margin-bottom: 40px;
-    padding: 40px 20px;
+    padding: 50px 30px;
     background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-    border-radius: 20px;
+    border-radius: 24px;
     box-shadow: 0 10px 40px var(--shadow);
+    position: relative;
+    overflow: hidden;
 }
 
-h1 {
-    font-size: 3rem;
-    font-weight: 700;
-    margin-bottom: 10px;
+.main-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('data:image/svg+xml,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+    opacity: 0.3;
+}
+
+.header-content {
+    position: relative;
+    z-index: 1;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.logo-icon {
+    font-size: 3.5rem;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
+.logo-text {
+    font-size: 3.5rem;
+    font-weight: 800;
+    letter-spacing: -1px;
     background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    text-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .subtitle {
-    font-size: 1.2rem;
-    color: rgba(255, 255, 255, 0.9);
+    font-size: 1.4rem;
+    color: rgba(255, 255, 255, 0.95);
+    font-weight: 500;
+    margin-bottom: 8px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.tagline {
+    font-size: 1.1rem;
+    color: rgba(255, 255, 255, 0.8);
     font-weight: 300;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Footer */
+.main-footer {
+    margin-top: 60px;
+    padding: 40px 30px;
+    background: var(--bg-card);
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 20px var(--shadow);
+}
+
+.footer-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 30px;
+}
+
+.footer-brand {
+    flex: 1;
+    min-width: 250px;
+}
+
+.footer-logo {
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    display: inline-block;
+}
+
+.footer-tagline {
+    margin-top: 8px;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.footer-info {
+    text-align: right;
+    flex: 1;
+    min-width: 250px;
+}
+
+.footer-info p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 4px 0;
+}
+
+.footer-tech {
+    color: var(--text-secondary);
+    opacity: 0.7;
+    font-size: 0.85rem !important;
+}
+
+@media (max-width: 768px) {
+    .footer-content {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .footer-info {
+        text-align: center;
+    }
+    
+    .logo-text {
+        font-size: 2.5rem;
+    }
+    
+    .logo-icon {
+        font-size: 2.5rem;
+    }
 }
 
 /* Container */
@@ -463,4 +582,141 @@ h1 {
 
 .card {
     animation: fadeIn 0.5s ease;
+}
+
+/* Floating Buttons */
+.floating-hire-btn,
+.floating-portfolio-btn,
+.floating-contact-btn {
+    position: fixed;
+    right: 30px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 24px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    color: white;
+    text-decoration: none;
+    border-radius: 50px;
+    box-shadow: 0 6px 24px rgba(102, 126, 234, 0.4);
+    font-weight: 600;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    z-index: 1000;
+    animation: float 3s ease-in-out infinite;
+}
+
+.floating-hire-btn {
+    bottom: 160px;
+}
+
+.floating-portfolio-btn {
+    bottom: 100px;
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    box-shadow: 0 6px 24px rgba(245, 158, 11, 0.4);
+}
+
+.floating-contact-btn {
+    bottom: 40px;
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    box-shadow: 0 6px 24px rgba(34, 197, 94, 0.4);
+}
+
+.floating-hire-btn:hover,
+.floating-portfolio-btn:hover,
+.floating-contact-btn:hover {
+    transform: translateY(-4px) scale(1.05);
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.5);
+}
+
+.floating-portfolio-btn:hover {
+    box-shadow: 0 10px 30px rgba(245, 158, 11, 0.5);
+}
+
+.floating-contact-btn:hover {
+    box-shadow: 0 10px 30px rgba(34, 197, 94, 0.5);
+}
+
+.hire-icon,
+.portfolio-icon,
+.contact-icon {
+    font-size: 1.3rem;
+    display: flex;
+    align-items: center;
+}
+
+.hire-text,
+.portfolio-text,
+.contact-text {
+    font-size: 1rem;
+}
+
+@keyframes float {
+    0%, 100% {
+        transform: translateY(0px);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+/* Mobile responsive for floating buttons */
+@media (max-width: 768px) {
+    .floating-hire-btn,
+    .floating-portfolio-btn,
+    .floating-contact-btn {
+        padding: 12px 18px;
+        right: 20px;
+        font-size: 0.9rem;
+    }
+    
+    .hire-text,
+    .portfolio-text,
+    .contact-text {
+        display: none;
+    }
+    
+    .hire-icon,
+    .portfolio-icon,
+    .contact-icon {
+        font-size: 1.5rem;
+    }
+    
+    .floating-hire-btn,
+    .floating-portfolio-btn,
+    .floating-contact-btn {
+        width: 56px;
+        height: 56px;
+        padding: 0;
+        justify-content: center;
+    }
+}
+
+/* Footer Links */
+.footer-links {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.footer-link {
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.footer-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+.footer-separator {
+    color: var(--text-secondary);
+    opacity: 0.5;
+    font-size: 0.8rem;
 }
