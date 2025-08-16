@@ -30,3 +30,11 @@ def test_deleting_session_removes_its_scheduled_jobs(app_module):
     client.delete(f"/api/sessions/{session_id}")
 
     assert app_module.scheduler.scheduler.get_job(job_id) is None
+
+
+def test_api_does_not_grant_cross_origin_access(app_module):
+    client = app_module.app.test_client()
+
+    response = client.get("/api/status", headers={"Origin": "https://evil.example"})
+
+    assert "Access-Control-Allow-Origin" not in response.headers
