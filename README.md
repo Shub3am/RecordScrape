@@ -1,4 +1,4 @@
-# RecordScape
+# RecordScrape
 
 A powerful visual browser automation platform for recording interactions and automating data extraction through intelligent session replay.
 
@@ -6,10 +6,11 @@ A powerful visual browser automation platform for recording interactions and aut
 
 - 🎥 **Visual Recording**: Record your browser interactions in real-time
 - 🎯 **Element Selection**: Visually select DOM elements for data extraction
-- 🔄 **Automated Replay**: Replay sessions in headless mode for data scraping
-- ⏰ **Scheduling**: Set up periodic scraping with customizable intervals
-- 📊 **Dashboard**: Modern RecordScape web interface for managing sessions and schedules
-- 💾 **Data Export**: Export scraped data in JSON/CSV formats
+- 🔄 **Automated Replay**: Reopen the recorded URL, visible or headless, and re-extract the selected elements
+- ⏰ **Scheduling**: Run a session every N minutes
+- 📊 **Dashboard**: Web interface for managing sessions, schedules and extracted data
+
+> Replay does not yet repeat recorded clicks or typing, and JSON/CSV export is not implemented yet. Both are on the roadmap.
 
 ## 🎥 Demo
 
@@ -23,7 +24,7 @@ Record once → Automate forever.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│              RecordScape Web Dashboard                   │
+│              RecordScrape Web Dashboard                  │
 │              (Flask + HTML/CSS/JS)                       │
 └─────────────────┬───────────────────────────────────────┘
                   │
@@ -48,52 +49,58 @@ Record once → Automate forever.
 
 ## Installation
 
+Requires Python 3.11+, [uv](https://docs.astral.sh/uv/) and Google Chrome.
+
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd RecordBrowser
+git clone https://github.com/Shub3am/RecordScrape.git
+cd RecordScrape
 ```
 
 2. Install dependencies:
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 3. Run the application:
 ```bash
-python app.py
+uv run python app.py
 ```
 
-4. Open your browser to `http://localhost:5000`
+4. Open your browser to `http://localhost:5001`. The server only listens on localhost.
+
+## Running tests
+
+```bash
+uv run pytest
+```
 
 ## Usage
 
 ### Recording a Session
 
-1. Click **"Record New Session"** in the dashboard
-2. Enter the URL you want to scrape
-3. Browser opens - perform your actions (navigate, click, scroll)
-4. Use the visual selector overlay to mark elements for extraction
-5. Click **"Stop Recording"** to save the session
+1. In **"Record New Session"**, enter the URL you want to scrape and click **"Start Recording"**
+2. A Chrome window opens on that URL
+3. Click **"Select Elements"** and click the elements you want to extract, then **"Done Selecting"** in the overlay
+4. Click **"Stop & Save"** to save the session
 
 ### Replaying & Extracting Data
 
 1. Find your session in the **"Saved Sessions"** section
 2. Click **"Replay"** to run it once manually
-3. Extracted data appears in **"Data Exports"**
-4. Download as JSON or CSV
+3. Extracted data appears in **"Recent Data Extractions"**
 
 ### Scheduling Periodic Scraping
 
 1. Click **"Schedule"** on any saved session
-2. Set the frequency (minutes, hours, days)
+2. Enter the frequency in minutes
 3. The scheduler automatically runs the session and saves data
 4. View scheduled jobs in the **"Schedules"** section
 
 ## Project Structure
 
 ```
-RecordBrowser/
+RecordScrape/
 ├── app.py                 # Flask application & API
 ├── vpr/                   # Visual Page Recorder package
 │   ├── __init__.py
@@ -108,7 +115,10 @@ RecordBrowser/
 │       └── app.js         # Dashboard JavaScript
 ├── templates/
 │   └── index.html         # Dashboard HTML
-└── requirements.txt
+├── tests/                 # pytest suite
+├── pyproject.toml         # Project metadata and dependencies
+├── uv.lock                # Pinned dependency versions
+└── LICENSE
 ```
 
 ## Technologies
@@ -121,4 +131,4 @@ RecordBrowser/
 
 ## License
 
-MIT
+MIT, see [LICENSE](LICENSE).
