@@ -248,7 +248,18 @@ class StorageManager:
             })
         
         return schedules
-    
+
+    def get_schedule_ids_for_session(self, session_id: int) -> List[int]:
+        """Get the ids of every schedule that replays a session."""
+        conn = self._connect()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT id FROM schedules WHERE session_id = ?", (session_id,))
+        schedule_ids = [row[0] for row in cursor.fetchall()]
+
+        conn.close()
+        return schedule_ids
+
     def update_schedule(self, schedule_id: int, frequency_minutes: Optional[int] = None,
                        enabled: Optional[bool] = None):
         """Update a schedule."""

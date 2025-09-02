@@ -96,6 +96,11 @@ class ScraperScheduler:
             logger.error(f"Error removing schedule: {e}")
             return False
     
+    def remove_session_schedules(self, session_id: int):
+        """Remove the scheduled jobs of every schedule that replays a session."""
+        for schedule_id in self.storage.get_schedule_ids_for_session(session_id):
+            self.remove_schedule(schedule_id)
+
     def pause_schedule(self, schedule_id: int) -> bool:
         """Pause a scheduled job."""
         try:

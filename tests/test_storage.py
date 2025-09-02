@@ -92,6 +92,18 @@ def test_delete_schedule_removes_it(storage):
     assert storage.get_schedule(schedule_id) is None
 
 
+def test_get_schedule_ids_for_session_returns_only_that_session(storage):
+    session_id = storage.create_session("Demo", "https://example.com", [])
+    other_session_id = storage.create_session("Other", "https://other.example", [])
+    first_schedule_id = storage.create_schedule(session_id, 15)
+    second_schedule_id = storage.create_schedule(session_id, 60)
+    storage.create_schedule(other_session_id, 15)
+
+    schedule_ids = storage.get_schedule_ids_for_session(session_id)
+
+    assert sorted(schedule_ids) == [first_schedule_id, second_schedule_id]
+
+
 def test_extracted_data_round_trips_per_session(storage):
     session_id = storage.create_session("Demo", "https://example.com", [])
     rows = [
