@@ -5,13 +5,12 @@ fallback selectors, waiting for late elements, and turning a browser failure int
 """
 
 import asyncio
-import socket
 
 import pytest
 
 from recordscrape.browsers import BrowserConfig
 from recordscrape.runner import run_session, session_runner
-from tests.fixture_site import serve_fixture_pages
+from tests.fixture_site import find_closed_local_port, serve_fixture_pages
 
 FIXTURE_PAGES = {
     "/products": (
@@ -93,12 +92,6 @@ def test_picked_elements_are_extracted_like_vpr(backend, fixture_site_url, monke
             "tag": "p",
         },
     ]
-
-
-def find_closed_local_port() -> int:
-    with socket.socket() as probe_socket:
-        probe_socket.bind(("127.0.0.1", 0))
-        return probe_socket.getsockname()[1]
 
 
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
