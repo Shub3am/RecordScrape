@@ -4,6 +4,7 @@ element's selectors when the one before no longer matches.
 Must not replay recorded actions yet, and must not know about storage, Flask or the worker.
 """
 
+import asyncio
 import time
 
 from patchright.async_api import Error as PatchrightError
@@ -62,9 +63,15 @@ async def run_session(browser_config: BrowserConfig, recorded_session: dict) -> 
         async with open_browser_context(browser_config) as browser_context:
             page = await browser_context.new_page()
             await page.goto(recorded_session["url"])
-            extracted_rows = []
-            for picked_element in recorded_session["selectors"]:
-                extracted_rows.extend(await read_picked_element(page, picked_element))
+            # Read concurrently so missing elements wait out one timeout together, not one each.
+            # gather keeps the picked order, so rows come out in the order the user picked.
+            rows_per_picked_element = await asyncio.gather(
+                *(
+                    read_picked_element(page, picked_element)
+                    for picked_element in recorded_session["selectors"]
+                )
+            )
+            extracted_rows = [row for picked_rows in rows_per_picked_element for row in picked_rows]
     except (PlaywrightError, PatchrightError) as browser_error:
         return {"success": False, "error": str(browser_error), "timestamp": time.time()}
     return {
