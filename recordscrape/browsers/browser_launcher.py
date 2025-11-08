@@ -13,6 +13,8 @@ from recordscrape.browsers.chromium_backend import open_chromium_context
 from recordscrape.browsers.patchright_backend import open_patchright_context
 
 OpenedBrowserContext = playwright.async_api.BrowserContext | patchright.async_api.BrowserContext
+# Each library raises its own Error class, so catching a browser failure must name both.
+BROWSER_ERRORS = (playwright.async_api.Error, patchright.async_api.Error)
 
 BACKEND_OPENERS = {
     "chromium": open_chromium_context,
