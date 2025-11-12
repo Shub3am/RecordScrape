@@ -3,12 +3,12 @@ Route tests for app.py.
 app.py builds its StorageManager, browser worker and scheduler at import time, so each test imports a fresh copy inside a temp cwd.
 """
 
+import dataclasses
 import importlib
 import sys
 
 import pytest
 
-from recordscrape.browsers import BrowserConfig
 from tests.fixture_site import find_closed_local_port, serve_fixture_pages
 
 FIXTURE_PAGES = {
@@ -28,7 +28,9 @@ def app_module(tmp_path, monkeypatch):
     monkeypatch.delitem(sys.modules, "app", raising=False)
     fresh_app_module = importlib.import_module("app")
     # Recording opens a visible window by design; tests have no screen to show it on.
-    fresh_app_module.RECORDING_BROWSER_CONFIG = BrowserConfig(backend="chromium", headless=True)
+    fresh_app_module.BROWSER_CONFIG = dataclasses.replace(
+        fresh_app_module.BROWSER_CONFIG, headless=True
+    )
     yield fresh_app_module
     fresh_app_module.scheduler.shutdown()
     fresh_app_module.browser_worker.stop()
