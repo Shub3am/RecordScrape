@@ -103,3 +103,61 @@ def test_manual_replay_extracts_and_saves_rows(app_module, fixture_site_url):
     saved_rows = client.get(f"/api/data/{session_id}").json[0]["data"]
     assert [row["value"] for row in saved_rows] == ["Shoe", "Hat"]
     assert client.get(f"/api/sessions/{session_id}").json["run_count"] == 1
+
+
+def test_exported_flow_imports_as_an_equal_session(app_module):
+    client = app_module.app.test_client()
+    recorded_actions = [
+        {"type": "navigate", "url": "https://shop.example/search", "timestamp": 1.0},
+        {"type": "click", "selector": "#apply", "fallbackSelectors": ["button"], "timestamp": 2.0},
+    ]
+    picked_elements = [{"selector": "h1", "fallbackSelectors": [], "attribute": "textContent"}]
+    session_id = app_module.storage.create_session(
+        'Shoe "prices"', "https://shop.example/search", recorded_actions, picked_elements
+    )
+
+    export_response = client.get(f"/api/sessions/{session_id}/flow")
+    import_response = client.post("/api/flows", json=export_response.json)
+
+    assert (
+        'filename="Shoe \\"prices\\".flow.json"' in export_response.headers["Content-Disposition"]
+    )
+    imported_session = client.get(f"/api/sessions/{import_response.json['session_id']}").json
+    assert imported_session["name"] == 'Shoe "prices"'
+    assert imported_session["url"] == "https://shop.example/search"
+    assert imported_session["actions"] == [
+        {"type": "click", "selector": "#apply", "fallbackSelectors": ["button"]}
+    ]
+    assert imported_session["selectors"] == picked_elements
+
+
+def test_exporting_a_missing_session_is_not_found(app_module):
+    client = app_module.app.test_client()
+
+    assert client.get("/api/sessions/999/flow").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "uploaded_text, named_problem",
+    [
+        (
+            (
+                '{"formatVersion": 2, "name": "Future", "startUrl": "https://shop.example/search",'
+                ' "steps": [], "pickedElements": []}'
+            ),
+            "formatVersion",
+        ),
+        ("not a flow file", "Invalid JSON"),
+    ],
+    ids=["newer-version", "not-json"],
+)
+def test_importing_an_invalid_flow_is_refused_without_saving(
+    app_module, uploaded_text, named_problem
+):
+    client = app_module.app.test_client()
+
+    import_response = client.post("/api/flows", data=uploaded_text, content_type="application/json")
+
+    assert import_response.status_code == 400
+    assert named_problem in import_response.json["error"]
+    assert client.get("/api/sessions").json == []
