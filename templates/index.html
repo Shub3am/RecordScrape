@@ -81,9 +81,15 @@
         <section class="section">
             <div class="section-header">
                 <h2 class="section-title">Saved Sessions</h2>
-                <button class="btn btn-secondary btn-small" onclick="loadSessions()">
-                    🔄 Refresh
-                </button>
+                <div class="card-actions">
+                    <label class="btn btn-secondary btn-small">
+                        📥 Import Flow
+                        <input type="file" id="import-flow-input" accept=".json,application/json" hidden>
+                    </label>
+                    <button class="btn btn-secondary btn-small" onclick="loadSessions()">
+                        🔄 Refresh
+                    </button>
+                </div>
             </div>
 
             <div class="grid" id="sessions-grid">
