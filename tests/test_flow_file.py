@@ -15,6 +15,20 @@ from recordscrape.flows import (
     recorded_session_from_flow,
 )
 
+CARD_TABLE = {
+    "rowSelector": "ul.results > li.card",
+    "rowFallbackSelectors": ["body > ul:nth-of-type(1) > li"],
+    "columns": [
+        {
+            "name": "name",
+            "selector": "h2.name",
+            "fallbackSelectors": [":scope > h2:nth-of-type(1)"],
+            "attribute": "textContent",
+        },
+        {"name": "link", "selector": "a.more", "fallbackSelectors": [], "attribute": "href"},
+    ],
+}
+
 
 def recorded_search_session(search_url):
     """Shaped like SessionRecorder.stop() output, timestamps and picker display fields included."""
@@ -49,6 +63,7 @@ def recorded_search_session(search_url):
                 "preview": "shoes|true...",
             }
         ],
+        "table": CARD_TABLE,
     }
 
 
@@ -90,6 +105,7 @@ def test_exported_session_imports_back_without_display_fields():
         "selectors": [
             {"selector": "#summary", "fallbackSelectors": ["p"], "attribute": "textContent"}
         ],
+        "table": CARD_TABLE,
     }
     assert "checked" not in json.loads(flow_text)["steps"][0]
 
@@ -102,12 +118,20 @@ def test_vpr_session_exports_only_its_start_url_and_picked_elements():
             {"type": "click", "selector": "#vpr-overlay", "timestamp": 2},
         ],
         "selectors": [{"selector": "h1", "tagName": "H1", "attribute": "textContent"}],
+        "table": None,
     }
 
     flow = flow_from_recorded_session("Old", vpr_session)
 
     assert flow.steps == []
     assert flow.pickedElements[0].fallbackSelectors == []
+    assert "table" not in json.loads(flow_file_json(flow))
+
+
+def test_flow_without_a_table_imports_as_a_session_without_one():
+    imported_session = recorded_session_from_flow(FlowFile.model_validate(valid_flow_file()))
+
+    assert imported_session["table"] is None
 
 
 @pytest.mark.parametrize(
@@ -118,6 +142,9 @@ def test_vpr_session_exports_only_its_start_url_and_picked_elements():
         ("steps", [{"type": "click", "selector": "#apply"}]),
         ("steps", [{"type": "click", "selector": "#apply", "fallbackSelectors": [], "wait": 5}]),
         ("steps", [{"type": "navigate", "url": "https://shop.example/other"}]),
+        ("table", {**CARD_TABLE, "columns": []}),
+        ("table", {**CARD_TABLE, "columns": [CARD_TABLE["columns"][0]] * 2}),
+        ("table", {**CARD_TABLE, "columns": [{**CARD_TABLE["columns"][0], "index": 0}]}),
     ],
     ids=[
         "newer-version",
@@ -125,6 +152,9 @@ def test_vpr_session_exports_only_its_start_url_and_picked_elements():
         "missing-fallbacks",
         "unknown-key",
         "navigate-step",
+        "table-without-columns",
+        "duplicate-column-names",
+        "unknown-column-key",
     ],
 )
 def test_malformed_flow_file_is_refused(broken_key, broken_value):
