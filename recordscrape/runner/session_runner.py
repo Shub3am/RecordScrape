@@ -1,6 +1,6 @@
 """
-Replays a recorded session's actions in a fresh browser, then re-reads the elements picked in it,
-falling back through each selector list when the one before no longer matches.
+Replays a recorded session's actions in a fresh browser, then re-reads the elements and row table
+picked in it, falling back through each selector list when the one before no longer matches.
 Must not know about storage, Flask or the worker.
 """
 
@@ -19,12 +19,29 @@ STEP_TARGET_WAIT_MS = 10000
 # vpr read values through Selenium: `.text` for textContent, which is the rendered text, and
 # get_attribute for the rest, which returns the property (an absolute href or src) before the
 # attribute. Kept so sessions recorded under vpr extract the same values.
-READ_PICKED_VALUES_SCRIPT = """(elements, attribute) => elements.map((element) => ({
-  value: attribute === 'textContent'
-    ? element.innerText
-    : String(element[attribute] ?? element.getAttribute(attribute) ?? ''),
-  tag: element.tagName.toLowerCase(),
-}))"""
+READ_ELEMENT_VALUE_FUNCTION = """(element, attribute) => attribute === 'textContent'
+  ? element.innerText
+  : String(element[attribute] ?? element.getAttribute(attribute) ?? '')"""
+
+READ_PICKED_VALUES_SCRIPT = f"""(elements, attribute) => {{
+  const readElementValue = {READ_ELEMENT_VALUE_FUNCTION};
+  return elements.map((element) => ({{
+    value: readElementValue(element, attribute),
+    tag: element.tagName.toLowerCase(),
+  }}));
+}}"""
+
+# Column selectors are relative to their row, so they run through the row's own querySelector,
+# where `:scope` is the row.
+READ_TABLE_ROWS_SCRIPT = f"""(rows, columns) => {{
+  const readElementValue = {READ_ELEMENT_VALUE_FUNCTION};
+  return rows.map((row) => Object.fromEntries(columns.map((column) => {{
+    const cell = [column.selector, ...column.fallbackSelectors]
+      .map((selector) => row.querySelector(selector))
+      .find((element) => element !== null);
+    return [column.name, cell === undefined ? '' : readElementValue(cell, column.attribute).trim()];
+  }})));
+}}"""
 
 # scrollTo returns before the page's scroll listeners run; browsers fire them on the next rendering
 # frame, just before animation frame callbacks. Lazy-loading pages start their loads from those
@@ -108,6 +125,21 @@ async def read_picked_element(page, picked_element: dict) -> list[dict]:
     ]
 
 
+async def read_row_table(page, row_table: dict) -> list[dict]:
+    """Returns one record per matched row, keyed by column name. A column that matches nothing in a
+    row reads "", and a row whose every value is empty is dropped."""
+    candidate_selectors = [row_table["rowSelector"], *row_table["rowFallbackSelectors"]]
+    matched_selector = await find_matching_selector(
+        page, candidate_selectors, PICKED_ELEMENT_WAIT_MS
+    )
+    if matched_selector is None:
+        return []
+    row_records = await page.locator(matched_selector).evaluate_all(
+        READ_TABLE_ROWS_SCRIPT, row_table["columns"]
+    )
+    return [row_record for row_record in row_records if any(row_record.values())]
+
+
 async def run_session(browser_config: BrowserConfig, recorded_session: dict) -> dict:
     """Returns the result dict vpr's SessionReplayer did, so the scheduler and dashboard read it
     unchanged. A browser failure or a step that matches nothing becomes `success: False`; any other
@@ -132,13 +164,30 @@ async def run_session(browser_config: BrowserConfig, recorded_session: dict) -> 
                 await replay_recorded_step(page, step_number, recorded_step)
             # Read concurrently so missing elements wait out one timeout together, not one each.
             # gather keeps the picked order, so rows come out in the order the user picked.
-            rows_per_picked_element = await asyncio.gather(
-                *(
-                    read_picked_element(page, picked_element)
-                    for picked_element in recorded_session["selectors"]
-                )
+            row_table = recorded_session["table"]
+            picked_element_reads = (
+                read_picked_element(page, picked_element)
+                for picked_element in recorded_session["selectors"]
             )
-            extracted_rows = [row for picked_rows in rows_per_picked_element for row in picked_rows]
+            if row_table is None:
+                rows_per_picked_element = await asyncio.gather(*picked_element_reads)
+                extracted_rows = [
+                    row for picked_rows in rows_per_picked_element for row in picked_rows
+                ]
+            else:
+                table_records, *rows_per_picked_element = await asyncio.gather(
+                    read_row_table(page, row_table), *picked_element_reads
+                )
+                # Each single picked element becomes a column holding its first value on every row.
+                single_columns = {
+                    picked_element["selector"]: picked_rows[0]["value"] if picked_rows else ""
+                    for picked_element, picked_rows in zip(
+                        recorded_session["selectors"], rows_per_picked_element
+                    )
+                }
+                extracted_rows = [
+                    {**table_record, **single_columns} for table_record in table_records
+                ]
     except (*BROWSER_ERRORS, RecordedStepFailed) as run_error:
         return {"success": False, "error": str(run_error), "timestamp": time.time()}
     return {
