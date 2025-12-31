@@ -12,6 +12,7 @@ import pytest
 from recordscrape.browsers import BROWSER_ERRORS, BrowserConfig, open_browser_context
 from recordscrape.recorder import SessionRecorder
 from recordscrape.recorder.recorder_script import read_page_script
+from recordscrape.runner import run_session
 from tests.fixture_site import serve_fixture_pages
 
 FIXTURE_PAGES = {
@@ -25,6 +26,19 @@ FIXTURE_PAGES = {
         '<a id="deal-link" href="/form">deal</a>'
     ),
     "/options": '<title>Options</title><label><input type="checkbox" id="gift"> gift wrap</label>',
+    "/cards": (
+        '<title>Cards</title><ul class="results">'
+        '<li class="card"><h2 class="name">Shoe</h2><span class="price">$40</span></li>'
+        '<li class="card"><h2 class="name">Hat</h2><span class="price">$15</span></li>'
+        '<li class="card"><h2 class="name">Sock</h2><span class="price">$5</span></li>'
+        '</ul><p id="footer">footer</p>'
+    ),
+}
+CARD_NAME_COLUMN = {
+    "name": "name",
+    "selector": "h2.name",
+    "fallbackSelectors": [":scope > h2:nth-of-type(1)"],
+    "attribute": "textContent",
 }
 
 ALL_BACKENDS = ["chromium", "patchright"]
@@ -221,3 +235,87 @@ def test_selector_builder_orders_unique_selectors(page_body, target_selector, ex
             return await page.locator(target_selector).evaluate(build_selectors_for_element)
 
     assert asyncio.run(build_selectors_for_target()) == expected_selectors
+
+
+def test_selector_builder_with_a_root_builds_selectors_relative_to_it():
+    selector_builder_script = read_page_script("selector_builder.js")
+    build_selectors_inside_row = (
+        f"(element) => {{ {selector_builder_script}"
+        " return buildSelectors(element, element.closest('li')); }"
+    )
+
+    async def build_selectors_for_first_name():
+        async with open_browser_context(BrowserConfig(backend="chromium")) as browser_context:
+            page = await browser_context.new_page()
+            await page.set_content(
+                '<ul><li><h2 id="first" class="name">a</h2></li><li><h2 class="name">b</h2></li></ul>'
+            )
+            return await page.locator("#first").evaluate(build_selectors_inside_row)
+
+    assert asyncio.run(build_selectors_for_first_name()) == [
+        "h2.name",
+        ":scope > h2:nth-of-type(1)",
+    ]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_row_picker_records_a_table_that_replays_into_records(backend, fixture_site_url):
+    async def pick_rows_then_replay():
+        recorder = SessionRecorder(BrowserConfig(backend=backend))
+        await recorder.start(f"{fixture_site_url}/cards")
+        page = recorder.active_page
+        await recorder.activate_row_picker()
+        await page.locator("h2").nth(0).click()
+        await page.locator("h2").nth(1).click()
+        await page.click("#footer")
+        await page.locator(".price").nth(2).click()
+        await wait_until(lambda: recorder.row_table and len(recorder.row_table["columns"]) == 2)
+        await page.click("#recordscrape-picker-done")
+        recorded_session = await recorder.stop()
+        return recorded_session, await run_session(BrowserConfig(backend=backend), recorded_session)
+
+    recorded_session, run_result = asyncio.run(pick_rows_then_replay())
+
+    assert recorded_session["table"] == {
+        "rowSelector": "ul.results > li.card",
+        "rowFallbackSelectors": ["html > body:nth-of-type(1) > ul:nth-of-type(1) > li.card"],
+        "columns": [
+            CARD_NAME_COLUMN,
+            {
+                "name": "price",
+                "selector": "span.price",
+                "fallbackSelectors": [":scope > span:nth-of-type(1)"],
+                "attribute": "textContent",
+            },
+        ],
+    }
+    assert without_timestamps(recorded_session["actions"]) == [
+        {"type": "navigate", "url": f"{fixture_site_url}/cards"}
+    ]
+    assert run_result["data"] == [
+        {"name": "Shoe", "price": "$40"},
+        {"name": "Hat", "price": "$15"},
+        {"name": "Sock", "price": "$5"},
+    ]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_row_picker_refuses_a_second_example_from_the_same_row(backend, fixture_site_url):
+    async def pick_twice_in_one_row_then_in_another():
+        recorder = SessionRecorder(BrowserConfig(backend=backend))
+        await recorder.start(f"{fixture_site_url}/cards")
+        page = recorder.active_page
+        await recorder.activate_row_picker()
+        await page.locator("h2").nth(0).click()
+        await page.locator(".price").nth(0).click()
+        await page.get_by_text("Not a field inside another row").wait_for()
+        table_after_refusal = recorder.row_table
+        await page.locator("h2").nth(1).click()
+        await wait_until(lambda: recorder.row_table is not None)
+        return table_after_refusal, await recorder.stop()
+
+    table_after_refusal, recorded_session = asyncio.run(pick_twice_in_one_row_then_in_another())
+
+    assert table_after_refusal is None
+    assert recorded_session["table"]["rowSelector"] == "ul.results > li.card"
+    assert recorded_session["table"]["columns"] == [CARD_NAME_COLUMN]
