@@ -192,6 +192,22 @@ def test_failed_start_closes_the_browser(backend):
     assert not asyncio.run(start_on_unreachable_url()).is_connected()
 
 
+def build_selectors_on_page(page_body, target_selector, build_selectors_call):
+    """Runs selector_builder.js on the target element; `build_selectors_call` sees it as `element`."""
+    selector_builder_script = read_page_script("selector_builder.js")
+    build_selectors_for_element = (
+        f"(element) => {{ {selector_builder_script} return {build_selectors_call}; }}"
+    )
+
+    async def build_selectors_for_target():
+        async with open_browser_context(BrowserConfig(backend="chromium")) as browser_context:
+            page = await browser_context.new_page()
+            await page.set_content(page_body)
+            return await page.locator(target_selector).evaluate(build_selectors_for_element)
+
+    return asyncio.run(build_selectors_for_target())
+
+
 @pytest.mark.parametrize(
     ("page_body", "target_selector", "expected_selectors"),
     [
@@ -223,39 +239,19 @@ def test_failed_start_closes_the_browser(backend):
     ids=["test-id-first", "escaped-id", "duplicate-class", "id-anchored-path"],
 )
 def test_selector_builder_orders_unique_selectors(page_body, target_selector, expected_selectors):
-    selector_builder_script = read_page_script("selector_builder.js")
-    build_selectors_for_element = (
-        f"(element) => {{ {selector_builder_script} return buildSelectors(element); }}"
-    )
+    built_selectors = build_selectors_on_page(page_body, target_selector, "buildSelectors(element)")
 
-    async def build_selectors_for_target():
-        async with open_browser_context(BrowserConfig(backend="chromium")) as browser_context:
-            page = await browser_context.new_page()
-            await page.set_content(page_body)
-            return await page.locator(target_selector).evaluate(build_selectors_for_element)
-
-    assert asyncio.run(build_selectors_for_target()) == expected_selectors
+    assert built_selectors == expected_selectors
 
 
 def test_selector_builder_with_a_root_builds_selectors_relative_to_it():
-    selector_builder_script = read_page_script("selector_builder.js")
-    build_selectors_inside_row = (
-        f"(element) => {{ {selector_builder_script}"
-        " return buildSelectors(element, element.closest('li')); }"
+    built_selectors = build_selectors_on_page(
+        '<ul><li><h2 id="first" class="name">a</h2></li><li><h2 class="name">b</h2></li></ul>',
+        "#first",
+        "buildSelectors(element, element.closest('li'))",
     )
 
-    async def build_selectors_for_first_name():
-        async with open_browser_context(BrowserConfig(backend="chromium")) as browser_context:
-            page = await browser_context.new_page()
-            await page.set_content(
-                '<ul><li><h2 id="first" class="name">a</h2></li><li><h2 class="name">b</h2></li></ul>'
-            )
-            return await page.locator("#first").evaluate(build_selectors_inside_row)
-
-    assert asyncio.run(build_selectors_for_first_name()) == [
-        "h2.name",
-        ":scope > h2:nth-of-type(1)",
-    ]
+    assert built_selectors == ["h2.name", ":scope > h2:nth-of-type(1)"]
 
 
 @pytest.mark.parametrize("backend", ALL_BACKENDS)

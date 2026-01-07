@@ -36,10 +36,11 @@ READ_PICKED_VALUES_SCRIPT = f"""(elements, attribute) => {{
 READ_TABLE_ROWS_SCRIPT = f"""(rows, columns) => {{
   const readElementValue = {READ_ELEMENT_VALUE_FUNCTION};
   return rows.map((row) => Object.fromEntries(columns.map((column) => {{
-    const cell = [column.selector, ...column.fallbackSelectors]
-      .map((selector) => row.querySelector(selector))
-      .find((element) => element !== null);
-    return [column.name, cell === undefined ? '' : readElementValue(cell, column.attribute).trim()];
+    const cell = [column.selector, ...column.fallbackSelectors].reduce(
+      (matchedCell, selector) => matchedCell ?? row.querySelector(selector),
+      null,
+    );
+    return [column.name, cell === null ? '' : readElementValue(cell, column.attribute).trim()];
   }})));
 }}"""
 

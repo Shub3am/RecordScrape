@@ -39,16 +39,13 @@ function installElementPicker(sendToRecorder, activatePickerEvent, activateRowPi
   let hoverBox = null;
   let pickedCount = 0;
   let firstRowExample = null;
-  let matchedRows = [];
   let rowTable = null;
+  let matchedRowCount = 0;
   const originalStyleByMarkedElement = new Map();
 
   // Built with DOM calls, not innerHTML, because pages that enforce Trusted Types reject innerHTML.
   const openPicker = (mode) => {
     pickerMode = mode;
-    firstRowExample = null;
-    matchedRows = [];
-    rowTable = null;
     pickerPanel = document.createElement('div');
     pickerPanel.style.cssText = `position: fixed; top: 16px; right: 16px; z-index: 2147483647;
       padding: 12px 16px; background: #fff; color: #111; border: 2px solid ${PICKER_COLOR};
@@ -75,6 +72,8 @@ function installElementPicker(sendToRecorder, activatePickerEvent, activateRowPi
     pickerPanel = null;
     statusLabel = null;
     hoverBox = null;
+    firstRowExample = null;
+    rowTable = null;
     for (const [markedElement, originalStyle] of originalStyleByMarkedElement) {
       if (originalStyle === null) {
         markedElement.removeAttribute('style');
@@ -123,38 +122,41 @@ function installElementPicker(sendToRecorder, activatePickerEvent, activateRowPi
     });
     sendToRecorder({ kind: 'table', table: rowTable });
     markElement(element, 'solid');
-    statusLabel.textContent = `Rows: ${matchedRows.length}, columns: ${rowTable.columns.length}`;
+    statusLabel.textContent = `Rows: ${matchedRowCount}, columns: ${rowTable.columns.length}`;
   };
 
   const pickForRowTable = (element) => {
     if (rowTable !== null) {
-      const row = matchedRows.find((matchedRow) => matchedRow !== element && matchedRow.contains(element));
-      if (row === undefined) {
+      // Searched from the parent: a column reads through its row's querySelector, which never
+      // matches the row itself, so a click on a whole row cannot be a column.
+      const row = element.parentElement?.closest(rowTable.rowSelector) ?? null;
+      if (row === null) {
         statusLabel.textContent = 'Click inside a highlighted row';
-      } else {
-        addColumn(element, row);
+        return;
       }
-    } else if (firstRowExample === null) {
+      addColumn(element, row);
+      return;
+    }
+    if (firstRowExample === null) {
       firstRowExample = element;
       markElement(element, 'solid');
       statusLabel.textContent = 'Now click the same field in another row';
-    } else {
-      const rowSelectors = buildRowSelectors(firstRowExample, element);
-      if (rowSelectors === null) {
-        statusLabel.textContent = 'Not a field inside another row. Click the same field in another row';
-        return;
-      }
-      rowTable = { ...rowSelectors, columns: [] };
-      matchedRows = Array.from(document.querySelectorAll(rowSelectors.rowSelector));
-      for (const matchedRow of matchedRows) {
-        markElement(matchedRow, 'dashed');
-      }
-      markElement(element, 'solid');
-      addColumn(
-        firstRowExample,
-        matchedRows.find((matchedRow) => matchedRow.contains(firstRowExample)),
-      );
+      return;
     }
+    const rowSelection = buildRowSelectors(firstRowExample, element);
+    if (rowSelection === null) {
+      statusLabel.textContent = 'Not a field inside another row. Click the same field in another row';
+      return;
+    }
+    const { rowSelector, rowFallbackSelectors, firstRow } = rowSelection;
+    rowTable = { rowSelector, rowFallbackSelectors, columns: [] };
+    const matchedRows = document.querySelectorAll(rowSelector);
+    for (const matchedRow of matchedRows) {
+      markElement(matchedRow, 'dashed');
+    }
+    matchedRowCount = matchedRows.length;
+    markElement(element, 'solid');
+    addColumn(firstRowExample, firstRow);
   };
 
   const handleEventWhilePicking = (event) => {
