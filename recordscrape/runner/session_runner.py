@@ -32,12 +32,14 @@ READ_PICKED_VALUES_SCRIPT = f"""(elements, attribute) => {{
 }}"""
 
 # Column selectors are relative to their row, so they run through the row's own querySelector,
-# where `:scope` is the row.
+# where `:scope` is the row. querySelector never returns the row itself, so a selector that is
+# exactly `:scope` is the column that reads the whole row.
 READ_TABLE_ROWS_SCRIPT = f"""(rows, columns) => {{
   const readElementValue = {READ_ELEMENT_VALUE_FUNCTION};
   return rows.map((row) => Object.fromEntries(columns.map((column) => {{
     const cell = [column.selector, ...column.fallbackSelectors].reduce(
-      (matchedCell, selector) => matchedCell ?? row.querySelector(selector),
+      (matchedCell, selector) =>
+        matchedCell ?? (selector === ':scope' ? row : row.querySelector(selector)),
       null,
     );
     return [column.name, cell === null ? '' : readElementValue(cell, column.attribute).trim()];
