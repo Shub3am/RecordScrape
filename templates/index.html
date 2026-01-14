@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Data Scraper</title>
+    <meta name="description" content="Record browser interactions and automate data extraction">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <header>
+        <h1>🎬 Visual Data Scraper</h1>
+        <p class="subtitle">Record, Replay, and Automate Data Extraction</p>
+    </header>
+
+    <div class="container">
+        <!-- Recording Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Record New Session</h2>
+                <div class="status-indicator">
+                    <span class="status-dot idle" id="status-dot"></span>
+                    <span id="status-text">Idle</span>
+                </div>
+            </div>
+
+            <div class="recording-controls">
+                <div class="input-group">
+                    <label for="url-input">Target URL</label>
+                    <input type="url" id="url-input" placeholder="https://example.com" autocomplete="url">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="start-recording-btn" class="btn btn-primary">
+                    🎥 Start Recording
+                </button>
+                <button id="activate-selector-btn" class="btn btn-secondary" disabled>
+                    🎯 Select Elements
+                </button>
+                <button id="stop-recording-btn" class="btn btn-danger" disabled>
+                    ⏹️ Stop & Save
+                </button>
+            </div>
+
+            <div
+                style="margin-top: 20px; padding: 15px; background: var(--bg-dark); border-radius: 8px; border-left: 4px solid var(--primary);">
+                <h4 style="margin-bottom: 10px;">📝 How to use:</h4>
+                <ol style="margin-left: 20px; color: var(--text-secondary); line-height: 1.8;">
+                    <li>Enter the URL you want to scrape</li>
+                    <li>Click "Start Recording" - browser will open</li>
+                    <li>Perform your actions (navigate, click, type, scroll)</li>
+                    <li>Click "Select Elements" to mark data to extract</li>
+                    <li>Click "Stop & Save" when done</li>
+                </ol>
+            </div>
+        </section>
+
+        <!-- Quick Stats -->
+        <div
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 40px;">
+            <div class="card" style="text-align: center;">
+                <div class="stat-value" id="sessions-count">0</div>
+                <div class="stat-label">Total Sessions</div>
+            </div>
+            <div class="card" style="text-align: center;">
+                <div class="stat-value" id="schedules-count">0</div>
+                <div class="stat-label">Active Schedules</div>
+            </div>
+        </div>
+
+        <!-- Sessions Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Saved Sessions</h2>
+                <button class="btn btn-secondary btn-small" onclick="loadSessions()">
+                    🔄 Refresh
+                </button>
+            </div>
+
+            <div class="grid" id="sessions-grid">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📹</div>
+                    <div class="empty-state-text">Loading sessions...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Schedules Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Schedules</h2>
+                <button class="btn btn-secondary btn-small" onclick="loadSchedules()">
+                    🔄 Refresh
+                </button>
+            </div>
+
+            <div id="schedules-list">
+                <div class="empty-state">
+                    <div class="empty-state-icon">⏰</div>
+                    <div class="empty-state-text">Loading schedules...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Data Section -->
+        <section class="section" id="data-section">
+            <div class="section-header">
+                <h2 class="section-title">Recent Data Extractions</h2>
+                <button class="btn btn-secondary btn-small" onclick="loadData()">
+                    🔄 Refresh
+                </button>
+            </div>
+
+            <div class="grid" id="data-list">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📊</div>
+                    <div class="empty-state-text">Loading data...</div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <footer style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
+        <p>Visual Data Scraper &copy; 2026 | Built with ❤️ using Selenium & Flask</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+
+</html>
