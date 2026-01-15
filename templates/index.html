@@ -4,15 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visual Data Scraper</title>
-    <meta name="description" content="Record browser interactions and automate data extraction">
+    <title>RecordScape - Visual Browser Automation</title>
+    <meta name="description" content="Record browser interactions and automate data extraction with RecordScape">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
 <body>
-    <header>
-        <h1>🎬 Visual Data Scraper</h1>
-        <p class="subtitle">Record, Replay, and Automate Data Extraction</p>
+    <header class="main-header">
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-icon">🎬</span>
+                <h1 class="logo-text">RecordScape</h1>
+            </div>
+            <p class="subtitle">Visual Browser Automation Platform</p>
+            <p class="tagline">Record, Replay, and Automate Data Extraction</p>
+        </div>
     </header>
 
     <div class="container">
@@ -123,8 +129,42 @@
         </section>
     </div>
 
-    <footer style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
-        <p>Visual Data Scraper &copy; 2026 | Built with ❤️ using Selenium & Flask</p>
+    <!-- Floating Hire Me Button -->
+    <a href="https://vshubham.com" target="_blank" class="floating-hire-btn" title="Visit Portfolio">
+        <span class="hire-icon">💼</span>
+        <span class="hire-text">Hire Me</span>
+    </a>
+
+    <!-- Floating Portfolio Button -->
+    <a href="https://vshubham.com" target="_blank" class="floating-portfolio-btn" title="Check My Portfolio">
+        <span class="portfolio-icon">🎨</span>
+        <span class="portfolio-text">Portfolio</span>
+    </a>
+
+    <!-- Floating Contact Button -->
+    <a href="https://linkedin.com/in/shubhamvs" target="_blank" class="floating-contact-btn" title="Connect on LinkedIn">
+        <span class="contact-icon">💬</span>
+        <span class="contact-text">Contact</span>
+    </a>
+
+    <footer class="main-footer">
+        <div class="footer-content">
+            <div class="footer-brand">
+                <span class="footer-logo">🎬 RecordScape</span>
+                <p class="footer-tagline">Automate Your Web Workflows</p>
+            </div>
+            <div class="footer-info">
+                <p>&copy; 2026 RecordScape. All rights reserved.</p>
+                <p class="footer-tech">Powered by Selenium & Flask</p>
+                <div class="footer-links">
+                    <a href="https://vshubham.com" target="_blank" class="footer-link">Portfolio</a>
+                    <span class="footer-separator">•</span>
+                    <a href="https://linkedin.com/in/shubhamvs" target="_blank" class="footer-link">LinkedIn</a>
+                    <span class="footer-separator">•</span>
+                    <a href="https://github.com/Shub3am" target="_blank" class="footer-link">GitHub</a>
+                </div>
+            </div>
+        </div>
     </footer>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>

@@ -1,6 +1,6 @@
-# Visual Data Scraper
+# RecordScape
 
-A powerful tool for recording browser interactions and automating data extraction through visual session replay.
+A powerful visual browser automation platform for recording interactions and automating data extraction through intelligent session replay.
 
 ## Features
 
@@ -8,14 +8,14 @@ A powerful tool for recording browser interactions and automating data extractio
 - 🎯 **Element Selection**: Visually select DOM elements for data extraction
 - 🔄 **Automated Replay**: Replay sessions in headless mode for data scraping
 - ⏰ **Scheduling**: Set up periodic scraping with customizable intervals
-- 📊 **Dashboard**: Modern web interface for managing sessions and schedules
+- 📊 **Dashboard**: Modern RecordScape web interface for managing sessions and schedules
 - 💾 **Data Export**: Export scraped data in JSON/CSV formats
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Web Dashboard                         │
+│              RecordScape Web Dashboard                   │
 │              (Flask + HTML/CSS/JS)                       │
 └─────────────────┬───────────────────────────────────────┘
                   │
