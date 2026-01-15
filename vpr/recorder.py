@@ -110,24 +110,33 @@ class SessionRecorder:
                 
                 const target = e.target;
                 if (target && target !== overlay) {
-                    // Generate selector
+                    // Generate selector - store only selector, not content
                     const selector = getUniqueSelector(target);
-                    const label = target.textContent.trim().substring(0, 50) || target.tagName;
+                    
+                    // Determine best attribute to extract
+                    let attribute = 'textContent';
+                    if (target.tagName === 'IMG') attribute = 'src';
+                    else if (target.tagName === 'A') attribute = 'href';
+                    else if (target.hasAttribute('value')) attribute = 'value';
+                    
+                    // Preview text for visual feedback only (not stored for extraction)
+                    const previewText = target.textContent.trim().substring(0, 30) || target.tagName;
                     
                     window.vprSelectedElements.push({
                         selector: selector,
-                        label: label,
                         tagName: target.tagName,
-                        attribute: target.getAttribute('data-extract') || 'textContent'
+                        attribute: attribute,
+                        preview: previewText + '...'  // Just for display during recording
                     });
                     
                     // Visual feedback
                     target.style.background = 'rgba(102, 126, 234, 0.2)';
                     target.style.outline = '3px solid #667eea';
                     
-                    // Update count
-                    document.getElementById('vpr-selected-count').textContent = 
-                        `Selected: ${window.vprSelectedElements.length}`;
+                    // Update count with preview
+                    const countEl = document.getElementById('vpr-selected-count');
+                    countEl.textContent = `Selected: ${window.vprSelectedElements.length}`;
+                    countEl.title = window.vprSelectedElements.map(s => s.preview).join('\\n');
                 }
             };
             
