@@ -162,17 +162,19 @@ class ScraperScheduler:
         except Exception as e:
             logger.error(f"Error in scraping job: {e}")
     
-    def run_manual(self, session_id: int) -> dict:
+    def run_manual(self, session_id: int, headless: bool = False) -> dict:
         """
         Manually trigger a scraping job (not scheduled).
         
         Args:
             session_id: ID of session to replay
+            headless: Whether to run in headless mode (default: False for visible browser)
             
         Returns:
             Result dictionary from replayer
         """
-        logger.info(f"Running manual scrape for session {session_id}")
+        mode = "headless" if headless else "visible browser"
+        logger.info(f"Running manual scrape for session {session_id} in {mode} mode")
         
         try:
             # Get session data
@@ -180,8 +182,8 @@ class ScraperScheduler:
             if not session:
                 return {"success": False, "error": "Session not found"}
             
-            # Replay session (visible browser for manual replay)
-            replayer = SessionReplayer(headless=False)
+            # Replay session with user-specified headless mode
+            replayer = SessionReplayer(headless=headless)
             result = replayer.replay_session(session)
             
             # Save extracted data

@@ -156,7 +156,9 @@ def delete_session(session_id):
 @app.route('/api/sessions/<int:session_id>/replay', methods=['POST'])
 def replay_session(session_id):
     """Manually replay a session."""
-    result = scheduler.run_manual(session_id)
+    data = request.json or {}
+    headless = data.get('headless', False)
+    result = scheduler.run_manual(session_id, headless=headless)
     return jsonify(result)
 
 
