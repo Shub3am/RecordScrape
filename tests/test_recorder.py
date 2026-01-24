@@ -6,6 +6,7 @@ outlives the recording.
 """
 
 import asyncio
+import contextlib
 
 import pytest
 
@@ -51,6 +52,19 @@ def fixture_site_url():
         yield site_url
 
 
+@contextlib.asynccontextmanager
+async def started_recorder(backend, start_url):
+    """Yields a recorder recording start_url, and stops it even when the test raises."""
+    recorder = SessionRecorder(BrowserConfig(backend=backend))
+    await recorder.start(start_url)
+    try:
+        yield recorder
+    finally:
+        # A browser left open keeps asyncio.run waiting on Playwright's driver forever, so a failing
+        # test would hang instead of failing. stop() after the test's own stop() closes nothing.
+        await recorder.stop()
+
+
 async def wait_until(condition, timeout_seconds=5):
     async with asyncio.timeout(timeout_seconds):
         while not condition():
@@ -67,16 +81,15 @@ def without_timestamps(recorded_actions):
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
 def test_actions_are_recorded_across_navigation(backend, fixture_site_url):
     async def record_search_then_save():
-        recorder = SessionRecorder(BrowserConfig(backend=backend))
-        await recorder.start(f"{fixture_site_url}/form")
-        page = recorder.active_page
-        await page.locator("input").press_sequentially("shoes")
-        await page.click("#to-results")
-        await page.wait_for_url("**/results")
-        await page.click("button")
-        await page.evaluate("() => window.scrollTo(0, 500)")
-        await wait_until(lambda: recorder.recorded_actions[-1]["type"] == "scroll")
-        return await recorder.stop()
+        async with started_recorder(backend, f"{fixture_site_url}/form") as recorder:
+            page = recorder.active_page
+            await page.locator("input").press_sequentially("shoes")
+            await page.click("#to-results")
+            await page.wait_for_url("**/results")
+            await page.click("button")
+            await page.evaluate("() => window.scrollTo(0, 500)")
+            await wait_until(lambda: recorder.recorded_actions[-1]["type"] == "scroll")
+            return await recorder.stop()
 
     recorded_session = asyncio.run(record_search_then_save())
 
@@ -106,11 +119,10 @@ def test_actions_are_recorded_across_navigation(backend, fixture_site_url):
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
 def test_checkbox_input_records_its_checked_state(backend, fixture_site_url):
     async def record_label_click():
-        recorder = SessionRecorder(BrowserConfig(backend=backend))
-        await recorder.start(f"{fixture_site_url}/options")
-        await recorder.active_page.click("label")
-        await wait_until(lambda: recorder.recorded_actions[-1]["type"] == "input")
-        return await recorder.stop()
+        async with started_recorder(backend, f"{fixture_site_url}/options") as recorder:
+            await recorder.active_page.click("label")
+            await wait_until(lambda: recorder.recorded_actions[-1]["type"] == "input")
+            return await recorder.stop()
 
     recorded_session = asyncio.run(record_label_click())
 
@@ -123,20 +135,19 @@ def test_checkbox_input_records_its_checked_state(backend, fixture_site_url):
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
 def test_picker_collects_elements_without_acting_on_the_page(backend, fixture_site_url):
     async def pick_headline_and_link_then_follow_link():
-        recorder = SessionRecorder(BrowserConfig(backend=backend))
-        await recorder.start(f"{fixture_site_url}/listing")
-        page = recorder.active_page
-        await recorder.activate_picker()
-        await page.click("h1")
-        await page.click("#deal-link")
-        await wait_until(lambda: len(recorder.picked_elements) == 2)
-        url_while_picking = page.url
-        await page.click("#recordscrape-picker-done")
-        headline_style_after_done = await page.locator("h1").get_attribute("style")
-        await page.click("#deal-link")
-        await page.wait_for_url("**/form")
-        await wait_until(lambda: recorder.recorded_actions[-1]["type"] == "click")
-        return url_while_picking, headline_style_after_done, await recorder.stop()
+        async with started_recorder(backend, f"{fixture_site_url}/listing") as recorder:
+            page = recorder.active_page
+            await recorder.activate_picker()
+            await page.click("h1")
+            await page.click("#deal-link")
+            await wait_until(lambda: len(recorder.picked_elements) == 2)
+            url_while_picking = page.url
+            await page.click("#recordscrape-picker-done")
+            headline_style_after_done = await page.locator("h1").get_attribute("style")
+            await page.click("#deal-link")
+            await page.wait_for_url("**/form")
+            await wait_until(lambda: recorder.recorded_actions[-1]["type"] == "click")
+            return url_while_picking, headline_style_after_done, await recorder.stop()
 
     url_while_picking, headline_style_after_done, recorded_session = asyncio.run(
         pick_headline_and_link_then_follow_link()
@@ -173,11 +184,10 @@ def test_picker_collects_elements_without_acting_on_the_page(backend, fixture_si
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
 def test_stop_closes_the_browser(backend, fixture_site_url):
     async def record_then_stop():
-        recorder = SessionRecorder(BrowserConfig(backend=backend))
-        await recorder.start(f"{fixture_site_url}/form")
-        browser = recorder.active_page.context.browser
-        await recorder.stop()
-        return browser
+        async with started_recorder(backend, f"{fixture_site_url}/form") as recorder:
+            browser = recorder.active_page.context.browser
+            await recorder.stop()
+            return browser
 
     assert not asyncio.run(record_then_stop()).is_connected()
 
@@ -258,18 +268,19 @@ def test_selector_builder_with_a_root_builds_selectors_relative_to_it():
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
 def test_row_picker_records_a_table_that_replays_into_records(backend, fixture_site_url):
     async def pick_rows_then_replay():
-        recorder = SessionRecorder(BrowserConfig(backend=backend))
-        await recorder.start(f"{fixture_site_url}/cards")
-        page = recorder.active_page
-        await recorder.activate_row_picker()
-        await page.locator("h2").nth(0).click()
-        await page.locator("h2").nth(1).click()
-        await page.click("#footer")
-        await page.locator(".price").nth(2).click()
-        await wait_until(lambda: recorder.row_table and len(recorder.row_table["columns"]) == 2)
-        await page.click("#recordscrape-picker-done")
-        recorded_session = await recorder.stop()
-        return recorded_session, await run_session(BrowserConfig(backend=backend), recorded_session)
+        async with started_recorder(backend, f"{fixture_site_url}/cards") as recorder:
+            page = recorder.active_page
+            await recorder.activate_row_picker()
+            await page.locator("h2").nth(0).click()
+            await page.locator("h2").nth(1).click()
+            await page.click("#footer")
+            await page.locator(".price").nth(2).click()
+            await wait_until(lambda: recorder.row_table and len(recorder.row_table["columns"]) == 2)
+            await page.click("#recordscrape-picker-done")
+            recorded_session = await recorder.stop()
+            return recorded_session, await run_session(
+                BrowserConfig(backend=backend), recorded_session
+            )
 
     recorded_session, run_result = asyncio.run(pick_rows_then_replay())
 
@@ -299,16 +310,17 @@ def test_row_picker_records_a_table_that_replays_into_records(backend, fixture_s
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
 def test_row_picker_takes_whole_rows_as_a_column(backend, fixture_site_url):
     async def pick_two_list_items_then_replay():
-        recorder = SessionRecorder(BrowserConfig(backend=backend))
-        await recorder.start(f"{fixture_site_url}/tags")
-        page = recorder.active_page
-        await recorder.activate_row_picker()
-        await page.locator("li").nth(0).click()
-        await page.locator("li").nth(1).click()
-        await wait_until(lambda: recorder.row_table is not None)
-        await page.click("#recordscrape-picker-done")
-        recorded_session = await recorder.stop()
-        return recorded_session, await run_session(BrowserConfig(backend=backend), recorded_session)
+        async with started_recorder(backend, f"{fixture_site_url}/tags") as recorder:
+            page = recorder.active_page
+            await recorder.activate_row_picker()
+            await page.locator("li").nth(0).click()
+            await page.locator("li").nth(1).click()
+            await wait_until(lambda: recorder.row_table is not None)
+            await page.click("#recordscrape-picker-done")
+            recorded_session = await recorder.stop()
+            return recorded_session, await run_session(
+                BrowserConfig(backend=backend), recorded_session
+            )
 
     recorded_session, run_result = asyncio.run(pick_two_list_items_then_replay())
 
@@ -334,17 +346,16 @@ def test_row_picker_takes_whole_rows_as_a_column(backend, fixture_site_url):
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
 def test_row_picker_refuses_a_second_example_from_the_same_row(backend, fixture_site_url):
     async def pick_twice_in_one_row_then_in_another():
-        recorder = SessionRecorder(BrowserConfig(backend=backend))
-        await recorder.start(f"{fixture_site_url}/cards")
-        page = recorder.active_page
-        await recorder.activate_row_picker()
-        await page.locator("h2").nth(0).click()
-        await page.locator(".price").nth(0).click()
-        await page.get_by_text("Not a field inside another row").wait_for()
-        table_after_refusal = recorder.row_table
-        await page.locator("h2").nth(1).click()
-        await wait_until(lambda: recorder.row_table is not None)
-        return table_after_refusal, await recorder.stop()
+        async with started_recorder(backend, f"{fixture_site_url}/cards") as recorder:
+            page = recorder.active_page
+            await recorder.activate_row_picker()
+            await page.locator("h2").nth(0).click()
+            await page.locator(".price").nth(0).click()
+            await page.get_by_text("Not a field inside another row").wait_for()
+            table_after_refusal = recorder.row_table
+            await page.locator("h2").nth(1).click()
+            await wait_until(lambda: recorder.row_table is not None)
+            return table_after_refusal, await recorder.stop()
 
     table_after_refusal, recorded_session = asyncio.run(pick_twice_in_one_row_then_in_another())
 
