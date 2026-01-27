@@ -61,7 +61,7 @@ async def started_recorder(backend, start_url):
         yield recorder
     finally:
         # A browser left open keeps asyncio.run waiting on Playwright's driver forever, so a failing
-        # test would hang instead of failing. stop() after the test's own stop() closes nothing.
+        # test would hang instead of failing. A second stop() closes nothing.
         await recorder.stop()
 
 
@@ -278,9 +278,7 @@ def test_row_picker_records_a_table_that_replays_into_records(backend, fixture_s
             await wait_until(lambda: recorder.row_table and len(recorder.row_table["columns"]) == 2)
             await page.click("#recordscrape-picker-done")
             recorded_session = await recorder.stop()
-            return recorded_session, await run_session(
-                BrowserConfig(backend=backend), recorded_session
-            )
+        return recorded_session, await run_session(BrowserConfig(backend=backend), recorded_session)
 
     recorded_session, run_result = asyncio.run(pick_rows_then_replay())
 
@@ -318,9 +316,7 @@ def test_row_picker_takes_whole_rows_as_a_column(backend, fixture_site_url):
             await wait_until(lambda: recorder.row_table is not None)
             await page.click("#recordscrape-picker-done")
             recorded_session = await recorder.stop()
-            return recorded_session, await run_session(
-                BrowserConfig(backend=backend), recorded_session
-            )
+        return recorded_session, await run_session(BrowserConfig(backend=backend), recorded_session)
 
     recorded_session, run_result = asyncio.run(pick_two_list_items_then_replay())
 
