@@ -128,6 +128,39 @@ def test_vpr_session_exports_only_its_start_url_and_picked_elements():
     assert "table" not in json.loads(flow_file_json(flow))
 
 
+@pytest.mark.parametrize(
+    "table_pagination",
+    [
+        {
+            "mode": "nextButton",
+            "selector": "a.next",
+            "fallbackSelectors": ["nav > a"],
+            "maxPages": 3,
+        },
+        {"mode": "infiniteScroll", "maxScrolls": 5},
+    ],
+    ids=["next-button", "infinite-scroll"],
+)
+def test_table_pagination_survives_export_and_import(table_pagination):
+    recorded_session = {
+        **recorded_search_session("https://shop.example/search"),
+        "table": {**CARD_TABLE, "pagination": table_pagination},
+    }
+
+    flow_text = flow_file_json(flow_from_recorded_session("Search", recorded_session))
+    imported_session = recorded_session_from_flow(FlowFile.model_validate_json(flow_text))
+
+    assert imported_session["table"] == {**CARD_TABLE, "pagination": table_pagination}
+
+
+def test_table_without_pagination_exports_without_the_key():
+    flow_text = flow_file_json(
+        flow_from_recorded_session("Search", recorded_search_session("https://shop.example/search"))
+    )
+
+    assert "pagination" not in json.loads(flow_text)["table"]
+
+
 def test_flow_without_a_table_imports_as_a_session_without_one():
     imported_session = recorded_session_from_flow(FlowFile.model_validate(valid_flow_file()))
 
@@ -145,6 +178,20 @@ def test_flow_without_a_table_imports_as_a_session_without_one():
         ("table", {**CARD_TABLE, "columns": []}),
         ("table", {**CARD_TABLE, "columns": [CARD_TABLE["columns"][0]] * 2}),
         ("table", {**CARD_TABLE, "columns": [{**CARD_TABLE["columns"][0], "index": 0}]}),
+        ("table", {**CARD_TABLE, "pagination": {"mode": "infiniteScroll", "maxScrolls": 0}}),
+        (
+            "table",
+            {
+                **CARD_TABLE,
+                "pagination": {
+                    "mode": "nextButton",
+                    "selector": "a.next",
+                    "fallbackSelectors": [],
+                    "maxPages": 0,
+                },
+            },
+        ),
+        ("table", {**CARD_TABLE, "pagination": {"mode": "pageNumbers", "maxPages": 3}}),
     ],
     ids=[
         "newer-version",
@@ -155,6 +202,9 @@ def test_flow_without_a_table_imports_as_a_session_without_one():
         "table-without-columns",
         "duplicate-column-names",
         "unknown-column-key",
+        "zero-scrolls",
+        "zero-pages",
+        "unknown-pagination-mode",
     ],
 )
 def test_malformed_flow_file_is_refused(broken_key, broken_value):
