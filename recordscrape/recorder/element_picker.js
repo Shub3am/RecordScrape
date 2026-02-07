@@ -1,5 +1,6 @@
 // Lets the user click elements on this document to mark them for extraction, until they press Done:
-// single elements, or in row mode a repeating row and the columns inside it.
+// single elements, or in row mode a repeating row and the columns inside it. In next-button mode
+// one click picks the button that leads to the next page of rows, and closes the picker.
 // Must not let a picking click reach the page, and must leave the page's own styles as it found them.
 
 const PICKER_DONE_BUTTON_ID = 'recordscrape-picker-done';
@@ -21,6 +22,7 @@ const EVENTS_BLOCKED_WHILE_PICKING = [
 const INSTRUCTIONS_BY_MODE = {
   elements: 'Click elements to extract',
   rows: 'Click the same field in two different rows',
+  nextButton: 'Click the button that opens the next page',
 };
 
 function extractedAttribute(element) {
@@ -32,7 +34,12 @@ function extractedAttribute(element) {
 
 // Must be installed before any other window listener in this script: its capture-phase listeners
 // then run first, and stopImmediatePropagation keeps picking clicks away from action capture too.
-function installElementPicker(sendToRecorder, activatePickerEvent, activateRowPickerEvent) {
+function installElementPicker(
+  sendToRecorder,
+  activatePickerEvent,
+  activateRowPickerEvent,
+  activateNextButtonPickerEvent,
+) {
   let pickerMode = null;
   let pickerPanel = null;
   let statusLabel = null;
@@ -53,7 +60,11 @@ function installElementPicker(sendToRecorder, activatePickerEvent, activateRowPi
     const instructions = document.createElement('div');
     instructions.textContent = INSTRUCTIONS_BY_MODE[mode];
     statusLabel = document.createElement('div');
-    statusLabel.textContent = mode === 'elements' ? `Picked: ${pickedCount}` : 'Rows: none yet';
+    statusLabel.textContent = {
+      elements: `Picked: ${pickedCount}`,
+      rows: 'Rows: none yet',
+      nextButton: '',
+    }[mode];
     const doneButton = document.createElement('button');
     doneButton.id = PICKER_DONE_BUTTON_ID;
     doneButton.type = 'button';
@@ -109,6 +120,12 @@ function installElementPicker(sendToRecorder, activatePickerEvent, activateRowPi
     markElement(element, 'solid');
     pickedCount += 1;
     statusLabel.textContent = `Picked: ${pickedCount}`;
+  };
+
+  const pickNextButton = (element) => {
+    const [selector, ...fallbackSelectors] = buildSelectors(element);
+    sendToRecorder({ kind: 'nextButton', nextButton: { selector, fallbackSelectors } });
+    closePicker();
   };
 
   const addColumn = (element, row) => {
@@ -168,6 +185,8 @@ function installElementPicker(sendToRecorder, activatePickerEvent, activateRowPi
       return;
     } else if (pickerMode === 'elements') {
       pickElement(event.target);
+    } else if (pickerMode === 'nextButton') {
+      pickNextButton(event.target);
     } else {
       pickForRowTable(event.target);
     }
@@ -196,5 +215,8 @@ function installElementPicker(sendToRecorder, activatePickerEvent, activateRowPi
   });
   window.addEventListener(activateRowPickerEvent, () => {
     if (pickerPanel === null) openPicker('rows');
+  });
+  window.addEventListener(activateNextButtonPickerEvent, () => {
+    if (pickerPanel === null) openPicker('nextButton');
   });
 }

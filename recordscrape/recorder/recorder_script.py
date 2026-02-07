@@ -12,6 +12,7 @@ RECORD_BINDING = "__recordscrapeRecord"
 
 ACTIVATE_PICKER_EVENT = "recordscrape:activate-picker"
 ACTIVATE_ROW_PICKER_EVENT = "recordscrape:activate-row-picker"
+ACTIVATE_NEXT_BUTTON_PICKER_EVENT = "recordscrape:activate-next-button-picker"
 
 
 # A DOM event reaches listeners in every JS world, so this works from Patchright's isolated evaluate.
@@ -21,6 +22,7 @@ def build_window_event_script(event_name: str) -> str:
 
 ACTIVATE_PICKER_SCRIPT = build_window_event_script(ACTIVATE_PICKER_EVENT)
 ACTIVATE_ROW_PICKER_SCRIPT = build_window_event_script(ACTIVATE_ROW_PICKER_EVENT)
+ACTIVATE_NEXT_BUTTON_PICKER_SCRIPT = build_window_event_script(ACTIVATE_NEXT_BUTTON_PICKER_EVENT)
 
 
 def read_page_script(file_name: str) -> str:
@@ -46,6 +48,7 @@ RECORDER_INIT_SCRIPT = f"""
     sendToRecorder,
     {json.dumps(ACTIVATE_PICKER_EVENT)},
     {json.dumps(ACTIVATE_ROW_PICKER_EVENT)},
+    {json.dumps(ACTIVATE_NEXT_BUTTON_PICKER_EVENT)},
   );
   startActionCapture(sendToRecorder);
 }})();
