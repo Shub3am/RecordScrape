@@ -98,6 +98,15 @@ uv run pytest
 
 Each run then saves one record per row, such as `{"name": "Shoe", "price": "$40"}`. A column is named after the clicked element's first CSS class; rename it in an exported flow file. Elements picked with **"Select Elements"** in the same session are added to every row, keyed by their selector.
 
+### Following a List Across Pages
+
+After picking rows, tell RecordScrape how the list continues:
+
+- **"Select Next Button"**, then click the page's Next button. Each run reads the rows, clicks Next, and reads again, until the button is gone or disabled, a click no longer changes the rows, or 10 pages are read.
+- **"Infinite Scroll"** for a feed that loads more as you scroll. Each run scrolls to the bottom until no new rows appear, or 10 scrolls are done, then reads every row.
+
+The last choice wins. Elements picked with **"Select Elements"** are read on the first page only. To change the 10-page or 10-scroll limit, export the flow, edit `maxPages` or `maxScrolls` under `table.pagination`, and import it.
+
 ### Replaying & Extracting Data
 
 1. Find your session in the **"Saved Sessions"** section
