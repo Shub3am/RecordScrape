@@ -180,6 +180,18 @@ def test_extracted_data_says_whether_its_session_has_a_row_table(storage):
     assert storage.get_session_data(without_table_id)[0]["has_table"] is False
 
 
+def test_get_extraction_returns_one_run_with_its_session_name(storage):
+    session_id = storage.create_session("Cards", "https://example.com", [], [], CARD_TABLE)
+    storage.save_extracted_data(session_id, [{"name": "Shoe"}])
+    data_id = storage.save_extracted_data(session_id, [{"name": "Hat"}])
+
+    extraction = storage.get_extraction(data_id)
+
+    assert extraction["session_name"] == "Cards"
+    assert extraction["data"] == [{"name": "Hat"}]
+    assert storage.get_extraction(data_id + 1) is None
+
+
 def test_delete_session_cascades_to_schedules_and_data(storage):
     session_id = storage.create_session("Demo", "https://example.com", [])
     schedule_id = storage.create_schedule(session_id, 15)

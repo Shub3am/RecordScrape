@@ -144,6 +144,43 @@ def test_manual_replay_extracts_and_saves_rows(app_module, fixture_site_url):
     assert client.get(f"/api/sessions/{session_id}").json["run_count"] == 1
 
 
+@pytest.mark.parametrize(
+    "export_format, expected_body, expected_mimetype",
+    [
+        ("csv", "name,price\r\nShoe,$40\r\n", "text/csv"),
+        ("json", '[\n  {\n    "name": "Shoe",\n    "price": "$40"\n  }\n]', "application/json"),
+        ("jsonl", '{"name": "Shoe", "price": "$40"}\n', "application/jsonl"),
+    ],
+)
+def test_extraction_downloads_in_each_format(
+    app_module, export_format, expected_body, expected_mimetype
+):
+    client = app_module.app.test_client()
+    session_id = app_module.storage.create_session("Cards", "https://shop.example", [])
+    data_id = app_module.storage.save_extracted_data(session_id, [{"name": "Shoe", "price": "$40"}])
+
+    export_response = client.get(f"/api/data/{data_id}/export?format={export_format}")
+
+    assert export_response.get_data(as_text=True) == expected_body
+    assert export_response.mimetype == expected_mimetype
+    assert export_response.headers["Content-Disposition"] == (
+        f"attachment; filename=Cards-{data_id}.{export_format}"
+    )
+
+
+def test_exporting_missing_data_or_an_unknown_format_is_refused(app_module):
+    client = app_module.app.test_client()
+    session_id = app_module.storage.create_session("Cards", "https://shop.example", [])
+    data_id = app_module.storage.save_extracted_data(session_id, [])
+
+    missing_response = client.get(f"/api/data/{data_id + 1}/export?format=csv")
+    unknown_format_response = client.get(f"/api/data/{data_id}/export?format=xlsx")
+
+    assert missing_response.status_code == 404
+    assert unknown_format_response.status_code == 400
+    assert unknown_format_response.json["error"] == "Format must be one of: csv, json, jsonl"
+
+
 def test_exported_flow_imports_as_an_equal_session(app_module):
     client = app_module.app.test_client()
     recorded_actions = [

@@ -373,6 +373,33 @@ class StorageManager:
         
         return data_list
     
+    def get_extraction(self, data_id: int) -> Optional[Dict]:
+        """Get one extraction with its session's name."""
+        conn = self._connect()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT ed.*, s.name as session_name
+            FROM extracted_data ed
+            JOIN sessions s ON ed.session_id = s.id
+            WHERE ed.id = ?
+        """, (data_id,))
+
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return None
+
+        return {
+            "id": row["id"],
+            "session_id": row["session_id"],
+            "session_name": row["session_name"],
+            "data": json.loads(row["data"]),
+            "extracted_at": row["extracted_at"]
+        }
+
     def get_all_data(self, limit: int = 50) -> List[Dict]:
         """Get all extracted data across all sessions."""
         conn = self._connect()

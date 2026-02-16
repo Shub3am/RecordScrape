@@ -509,6 +509,9 @@ function renderData(dataList) {
                 <button class="btn btn-secondary btn-small" onclick="downloadData(${item.id}, 'csv')">
                     📄 CSV
                 </button>
+                <button class="btn btn-secondary btn-small" onclick="downloadData(${item.id}, 'jsonl')">
+                    📃 JSONL
+                </button>
             </div>
         </div>
     `).join('');
@@ -546,9 +549,7 @@ async function viewData(sessionId) {
 }
 
 function downloadData(dataId, format) {
-    // In a real implementation, this would fetch the specific data item
-    // For now, we'll show a notification
-    showNotification(`Download ${format.toUpperCase()} functionality coming soon!`, 'info');
+    window.location.href = `${API_BASE}/data/${dataId}/export?format=${format}`;
 }
 
 // ==================== UTILITIES ====================
