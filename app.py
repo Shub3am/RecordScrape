@@ -337,7 +337,8 @@ def get_session_data(session_id):
 @app.route('/api/data/<int:data_id>/export', methods=['GET'])
 def export_extraction(data_id):
     """Download one extraction as CSV, JSON or JSONL."""
-    export_format = EXPORT_FORMATS.get(request.args.get('format', ''))
+    format_name = request.args.get('format', '')
+    export_format = EXPORT_FORMATS.get(format_name)
     if not export_format:
         return jsonify({"error": f"Format must be one of: {', '.join(EXPORT_FORMATS)}"}), 400
 
@@ -350,7 +351,7 @@ def export_extraction(data_id):
         io.BytesIO(export_text.encode()),
         mimetype=export_format.mimetype,
         as_attachment=True,
-        download_name=f"{extraction['session_name']}-{data_id}.{export_format.file_extension}"
+        download_name=f"{extraction['session_name']}-{data_id}.{format_name}"
     )
 
 
