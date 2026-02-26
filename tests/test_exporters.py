@@ -37,6 +37,21 @@ def test_csv_writes_picked_element_rows_with_their_numbers():
     assert csv_text == "selector,value,attribute,index,tag\r\nh1,Hello,textContent,0,h1\r\n"
 
 
+def test_csv_cells_a_spreadsheet_would_run_as_formulas_are_written_as_text():
+    scraped_records = [
+        {"=cmd": '=HYPERLINK("http://evil.example")', "price": "-5", "note": "+1 more"},
+        {"=cmd": "@SUM(A1)", "price": "-1.50", "note": "-inf"},
+    ]
+
+    csv_rows = list(csv.reader(io.StringIO(records_as_csv(scraped_records))))
+
+    assert csv_rows == [
+        ["'=cmd", "price", "note"],
+        ['\'=HYPERLINK("http://evil.example")', "-5", "'+1 more"],
+        ["'@SUM(A1)", "-1.50", "'-inf"],
+    ]
+
+
 def test_csv_of_no_records_is_a_blank_header_line():
     assert records_as_csv([]) == "\r\n"
 

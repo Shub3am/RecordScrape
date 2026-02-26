@@ -115,7 +115,7 @@ The last choice wins. Elements picked with **"Select Elements"** are read on the
 3. Extracted data appears in **"Recent Data Extractions"**
 4. Click **"JSON"**, **"CSV"** or **"JSONL"** on a run to download its data
 
-A CSV has one column per field and one line per row or picked value. Values are written exactly as scraped, so a spreadsheet runs a value that starts with `=`, `+`, `-` or `@` as a formula; open files from untrusted sites as text.
+A CSV has one column per field and one line per row or picked value. A value that a spreadsheet would run as a formula (one starting with `=`, `+`, `-` or `@` that is not a plain number) gets a leading `'` so it opens as text. JSON and JSONL keep every value exactly as scraped.
 
 ### Exporting and Importing Flows
 
