@@ -11,6 +11,14 @@ A powerful visual browser automation platform for recording interactions and aut
 - 📊 **Dashboard**: Modern RecordScape web interface for managing sessions and schedules
 - 💾 **Data Export**: Export scraped data in JSON/CSV formats
 
+## 🎥 Demo
+
+▶ Full video:  
+https://twitter.com/Shubh3m/status/2027349108256887131
+
+Record once → Automate forever.
+
+
 ## Architecture
 
 ```
