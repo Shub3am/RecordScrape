@@ -24,7 +24,9 @@ HARMLESS_ANNOUNCE_ERROR_MESSAGES = (
 @asynccontextmanager
 async def open_patchright_context(browser_config: BrowserConfig) -> AsyncIterator[BrowserContext]:
     async with async_playwright() as patchright_driver:
-        browser = await patchright_driver.chromium.launch(headless=browser_config.headless)
+        browser = await patchright_driver.chromium.launch(
+            headless=browser_config.headless, proxy=browser_config.launch_proxy_settings()
+        )
         try:
             browser_context = await browser.new_context()
             browser_context.on("page", announce_bindings_on_every_document)

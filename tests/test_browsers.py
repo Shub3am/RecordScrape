@@ -15,6 +15,7 @@ from recordscrape.browsers import (
     BrowserConfig,
     open_browser_context,
 )
+from tests.fixture_proxy import serve_authenticating_proxy
 from tests.fixture_site import find_closed_local_port, serve_fixture_pages
 
 FIXTURE_PAGES = {
@@ -106,3 +107,22 @@ def test_leaving_the_context_closes_the_browser(backend):
         return browser
 
     assert not asyncio.run(open_then_leave_context()).is_connected()
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_pages_load_through_an_authenticating_proxy(backend, fixture_site_url, monkeypatch):
+    monkeypatch.setenv("FIXTURE_PROXY_PASS", "hunter2")
+
+    async def read_title_through_proxy(proxy_url):
+        browser_config = BrowserConfig(backend=backend, proxy=proxy_url)
+        async with open_browser_context(browser_config) as browser_context:
+            page = await browser_context.new_page()
+            await page.goto("http://shop.test/first")
+            return await page.title()
+
+    with serve_authenticating_proxy("ana", "hunter2", {"shop.test": fixture_site_url}) as proxy:
+        proxy_url = proxy.url_without_credentials.replace("://", "://ana:${FIXTURE_PROXY_PASS}@")
+        page_title = asyncio.run(read_title_through_proxy(proxy_url))
+
+    assert page_title == "First"
+    assert "http://shop.test/first" in proxy.authenticated_urls
