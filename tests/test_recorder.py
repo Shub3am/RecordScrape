@@ -15,6 +15,7 @@ from recordscrape.recorder import SessionRecorder
 from recordscrape.recorder.recorder_script import read_page_script
 from recordscrape.runner import run_session
 from tests.fixture_site import serve_fixture_pages
+from tests.installed_backends import RECORDING_BACKENDS
 
 FIXTURE_PAGES = {
     "/form": '<title>Form</title><input name="query"><a id="to-results" href="/results">go</a>',
@@ -52,8 +53,6 @@ CARD_NAME_COLUMN = {
     "attribute": "textContent",
 }
 
-ALL_BACKENDS = ["chromium", "patchright"]
-
 
 @pytest.fixture(scope="module")
 def fixture_site_url():
@@ -87,7 +86,7 @@ def without_timestamps(recorded_actions):
     ]
 
 
-@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize("backend", RECORDING_BACKENDS)
 def test_actions_are_recorded_across_navigation(backend, fixture_site_url):
     async def record_search_then_save():
         async with started_recorder(backend, f"{fixture_site_url}/form") as recorder:
@@ -125,7 +124,7 @@ def test_actions_are_recorded_across_navigation(backend, fixture_site_url):
     ]
 
 
-@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize("backend", RECORDING_BACKENDS)
 def test_checkbox_input_records_its_checked_state(backend, fixture_site_url):
     async def record_label_click():
         async with started_recorder(backend, f"{fixture_site_url}/options") as recorder:
@@ -141,7 +140,7 @@ def test_checkbox_input_records_its_checked_state(backend, fixture_site_url):
     assert checkbox_input["checked"] is True
 
 
-@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize("backend", RECORDING_BACKENDS)
 def test_picker_collects_elements_without_acting_on_the_page(backend, fixture_site_url):
     async def pick_headline_and_link_then_follow_link():
         async with started_recorder(backend, f"{fixture_site_url}/listing") as recorder:
@@ -190,7 +189,7 @@ def test_picker_collects_elements_without_acting_on_the_page(backend, fixture_si
     ]
 
 
-@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize("backend", RECORDING_BACKENDS)
 def test_stop_closes_the_browser(backend, fixture_site_url):
     async def record_then_stop():
         async with started_recorder(backend, f"{fixture_site_url}/form") as recorder:
@@ -201,7 +200,7 @@ def test_stop_closes_the_browser(backend, fixture_site_url):
     assert not asyncio.run(record_then_stop()).is_connected()
 
 
-@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize("backend", RECORDING_BACKENDS)
 def test_failed_start_closes_the_browser(backend):
     async def start_on_unreachable_url():
         recorder = SessionRecorder(BrowserConfig(backend=backend))
@@ -274,7 +273,7 @@ def test_selector_builder_with_a_root_builds_selectors_relative_to_it():
     assert built_selectors == ["h2.name", ":scope > h2:nth-of-type(1)"]
 
 
-@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize("backend", RECORDING_BACKENDS)
 def test_row_picker_records_a_table_that_replays_into_records(backend, fixture_site_url):
     async def pick_rows_then_replay():
         async with started_recorder(backend, f"{fixture_site_url}/cards") as recorder:
@@ -314,7 +313,7 @@ def test_row_picker_records_a_table_that_replays_into_records(backend, fixture_s
     ]
 
 
-@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize("backend", RECORDING_BACKENDS)
 def test_row_picker_takes_whole_rows_as_a_column(backend, fixture_site_url):
     async def pick_two_list_items_then_replay():
         async with started_recorder(backend, f"{fixture_site_url}/tags") as recorder:
@@ -348,7 +347,7 @@ def test_row_picker_takes_whole_rows_as_a_column(backend, fixture_site_url):
     ]
 
 
-@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize("backend", RECORDING_BACKENDS)
 def test_row_picker_refuses_a_second_example_from_the_same_row(backend, fixture_site_url):
     async def pick_twice_in_one_row_then_in_another():
         async with started_recorder(backend, f"{fixture_site_url}/cards") as recorder:
@@ -369,7 +368,7 @@ def test_row_picker_refuses_a_second_example_from_the_same_row(backend, fixture_
     assert recorded_session["table"]["columns"] == [CARD_NAME_COLUMN]
 
 
-@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize("backend", RECORDING_BACKENDS)
 def test_next_button_picker_records_a_pagination_that_replays_every_page(backend, fixture_site_url):
     async def pick_rows_and_next_button_then_replay():
         async with started_recorder(backend, f"{fixture_site_url}/shop?page=1") as recorder:

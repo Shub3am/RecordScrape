@@ -12,6 +12,7 @@ import pytest
 from recordscrape.browsers import BrowserConfig
 from recordscrape.runner import run_session, session_runner
 from tests.fixture_site import find_closed_local_port, serve_fixture_pages
+from tests.installed_backends import ALL_BACKENDS
 
 SHOP_PAGES = [["Shoe", "Hat"], ["Boot", "Cap"], ["Sock", "Belt"]]
 
@@ -149,9 +150,6 @@ def next_button_pagination(selector, max_pages):
 
 def extracted_values(run_result):
     return [row["value"] for row in run_result["data"]]
-
-
-ALL_BACKENDS = ["chromium", "patchright"]
 
 
 @pytest.fixture(scope="module")
