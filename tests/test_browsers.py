@@ -121,7 +121,7 @@ def test_pages_load_through_an_authenticating_proxy(backend, fixture_site_url, m
             return await page.title()
 
     with serve_authenticating_proxy("ana", "hunter2", {"shop.test": fixture_site_url}) as proxy:
-        proxy_url = proxy.url_without_credentials.replace("://", "://ana:${FIXTURE_PROXY_PASS}@")
+        proxy_url = f"http://ana:${{FIXTURE_PROXY_PASS}}@{proxy.address}"
         page_title = asyncio.run(read_title_through_proxy(proxy_url))
 
     assert page_title == "First"
@@ -144,9 +144,8 @@ def test_cloakbrowser_without_its_extra_says_how_to_install_it(monkeypatch):
         asyncio.run(open_cloakbrowser())
 
 
+@pytest.mark.skipif("cloakbrowser" not in ALL_BACKENDS, reason="cloakbrowser extra not installed")
 def test_cloakbrowser_clicks_with_human_like_input(fixture_site_url):
-    pytest.importorskip("cloakbrowser")
-
     async def follow_link_with_humanize():
         browser_config = BrowserConfig(backend="cloakbrowser", humanize=True)
         async with open_browser_context(browser_config) as browser_context:

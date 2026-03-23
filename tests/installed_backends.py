@@ -6,12 +6,17 @@ Must not hold any test.
 """
 
 import importlib.util
+from typing import get_args
 
-from recordscrape.browsers import BACKENDS_WITHOUT_BINDINGS
+from recordscrape.browsers import BACKENDS_WITHOUT_BINDINGS, BackendName
 
-ALL_BACKENDS = ["chromium", "patchright"]
-if importlib.util.find_spec("cloakbrowser"):
-    ALL_BACKENDS.append("cloakbrowser")
+OPTIONAL_BACKENDS = ("cloakbrowser",)
+
+ALL_BACKENDS = [
+    backend
+    for backend in get_args(BackendName)
+    if backend not in OPTIONAL_BACKENDS or importlib.util.find_spec(backend)
+]
 
 RECORDING_BACKENDS = [
     backend for backend in ALL_BACKENDS if backend not in BACKENDS_WITHOUT_BINDINGS
