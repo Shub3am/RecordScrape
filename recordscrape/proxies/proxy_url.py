@@ -17,11 +17,12 @@ def expand_env_references(proxy_url: str) -> str:
 
     def env_value(reference_match: re.Match) -> str:
         env_name = reference_match.group(1)
-        if env_name not in os.environ:
+        referenced_value = os.environ.get(env_name)
+        if referenced_value is None:
             raise ValueError(
                 f"Proxy URL needs the environment variable {env_name}, which is not set"
             )
-        return os.environ[env_name]
+        return referenced_value
 
     return ENV_REFERENCE.sub(env_value, proxy_url)
 
