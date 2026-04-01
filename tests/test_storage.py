@@ -17,6 +17,12 @@ CARD_TABLE = {
     ],
 }
 
+PROXIED_PATCHRIGHT = {
+    "backend": "patchright",
+    "proxy": "http://proxy.example:8080",
+    "humanize": False,
+}
+
 
 @pytest.fixture
 def storage(tmp_path):
@@ -52,7 +58,17 @@ def test_session_round_trips_its_row_table(storage):
     assert storage.get_session(without_table_id)["table"] is None
 
 
-def test_database_from_before_row_tables_gains_the_column_and_keeps_sessions(tmp_path):
+def test_session_round_trips_its_browser_settings(storage):
+    with_browser_id = storage.create_session(
+        "Proxied", "https://example.com", [], browser=PROXIED_PATCHRIGHT
+    )
+    without_browser_id = storage.create_session("Plain", "https://example.com", [])
+
+    assert storage.get_session(with_browser_id)["browser"] == PROXIED_PATCHRIGHT
+    assert storage.get_session(without_browser_id)["browser"] is None
+
+
+def test_database_from_before_added_columns_gains_them_and_keeps_sessions(tmp_path):
     db_path = tmp_path / "old.db"
     old_database = sqlite3.connect(db_path)
     old_database.execute("""
@@ -75,9 +91,15 @@ def test_database_from_before_row_tables_gains_the_column_and_keeps_sessions(tmp
 
     storage = StorageManager(db_path=str(db_path))
 
-    [old_session] = storage.get_all_sessions()
-    assert old_session["name"] == "Old"
+    new_session_id = storage.create_session(
+        "New", "https://example.com", [], [], CARD_TABLE, PROXIED_PATCHRIGHT
+    )
+
+    sessions_by_name = {session["name"]: session for session in storage.get_all_sessions()}
+    old_session = sessions_by_name["Old"]
     assert old_session["table"] is None
+    assert old_session["browser"] is None
+    assert storage.get_session(new_session_id)["browser"] == PROXIED_PATCHRIGHT
 
 
 def test_get_missing_session_returns_none(storage):

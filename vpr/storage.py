@@ -41,14 +41,16 @@ class StorageManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_run TIMESTAMP,
                 run_count INTEGER DEFAULT 0,
-                row_table TEXT
+                row_table TEXT,
+                browser_settings TEXT
             )
         """)
 
-        # Databases created before row tables lack the column; CREATE TABLE IF NOT EXISTS skips them.
+        # Databases created before these columns lack them; CREATE TABLE IF NOT EXISTS skips them.
         session_columns = {column[1] for column in cursor.execute("PRAGMA table_info(sessions)")}
-        if "row_table" not in session_columns:
-            cursor.execute("ALTER TABLE sessions ADD COLUMN row_table TEXT")
+        for added_column in ("row_table", "browser_settings"):
+            if added_column not in session_columns:
+                cursor.execute(f"ALTER TABLE sessions ADD COLUMN {added_column} TEXT")
         
         # Schedules table
         cursor.execute("""
@@ -81,20 +83,22 @@ class StorageManager:
     
     def create_session(self, name: str, url: str, actions: List[Dict], 
                       selectors: Optional[List[Dict]] = None,
-                      table: Optional[Dict] = None) -> int:
-        """Create a new session recording."""
+                      table: Optional[Dict] = None,
+                      browser: Optional[Dict] = None) -> int:
+        """Create a new session recording. browser None means the app's default browser."""
         conn = self._connect()
         cursor = conn.cursor()
         
         cursor.execute("""
-            INSERT INTO sessions (name, url, actions, selectors, row_table)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO sessions (name, url, actions, selectors, row_table, browser_settings)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             name,
             url,
             json.dumps(actions),
             json.dumps(selectors) if selectors else None,
-            json.dumps(table) if table else None
+            json.dumps(table) if table else None,
+            json.dumps(browser) if browser else None
         ))
         
         session_id = cursor.lastrowid
@@ -121,6 +125,7 @@ class StorageManager:
                 "actions": json.loads(row["actions"]),
                 "selectors": json.loads(row["selectors"]) if row["selectors"] else [],
                 "table": json.loads(row["row_table"]) if row["row_table"] else None,
+                "browser": json.loads(row["browser_settings"]) if row["browser_settings"] else None,
                 "created_at": row["created_at"],
                 "last_run": row["last_run"],
                 "run_count": row["run_count"]
@@ -146,6 +151,7 @@ class StorageManager:
                 "actions": json.loads(row["actions"]),
                 "selectors": json.loads(row["selectors"]) if row["selectors"] else [],
                 "table": json.loads(row["row_table"]) if row["row_table"] else None,
+                "browser": json.loads(row["browser_settings"]) if row["browser_settings"] else None,
                 "created_at": row["created_at"],
                 "last_run": row["last_run"],
                 "run_count": row["run_count"]
