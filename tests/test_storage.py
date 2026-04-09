@@ -105,3 +105,14 @@ def test_extracted_data_round_trips_per_session(storage):
     assert session_data[0]["data"] == rows
     assert all_data[0]["session_name"] == "Demo"
     assert all_data[0]["data"] == rows
+
+
+def test_delete_session_cascades_to_schedules_and_data(storage):
+    session_id = storage.create_session("Demo", "https://example.com", [])
+    schedule_id = storage.create_schedule(session_id, 15)
+    storage.save_extracted_data(session_id, [{"value": "Hello"}])
+
+    storage.delete_session(session_id)
+
+    assert storage.get_schedule(schedule_id) is None
+    assert storage.get_session_data(session_id) == []

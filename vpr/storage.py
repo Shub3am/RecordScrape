@@ -18,9 +18,16 @@ class StorageManager:
         self.db_path = db_path
         self._init_database()
     
+    def _connect(self) -> sqlite3.Connection:
+        """Open a connection with foreign keys enforced."""
+        conn = sqlite3.connect(self.db_path)
+        # SQLite ships with foreign keys off per connection, so ON DELETE CASCADE is inert without this.
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+
     def _init_database(self):
         """Create database tables if they don't exist."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         cursor = conn.cursor()
         
         # Sessions table
@@ -69,7 +76,7 @@ class StorageManager:
     def create_session(self, name: str, url: str, actions: List[Dict], 
                       selectors: Optional[List[Dict]] = None) -> int:
         """Create a new session recording."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -90,7 +97,7 @@ class StorageManager:
     
     def get_session(self, session_id: int) -> Optional[Dict]:
         """Get a session by ID."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -113,7 +120,7 @@ class StorageManager:
     
     def get_all_sessions(self) -> List[Dict]:
         """Get all sessions."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -138,7 +145,7 @@ class StorageManager:
     
     def update_session_run(self, session_id: int):
         """Update session last run time and increment run count."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -152,7 +159,7 @@ class StorageManager:
     
     def delete_session(self, session_id: int):
         """Delete a session and all related data."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         cursor = conn.cursor()
         
         cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
@@ -164,7 +171,7 @@ class StorageManager:
     
     def create_schedule(self, session_id: int, frequency_minutes: int) -> int:
         """Create a new schedule for a session."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         cursor = conn.cursor()
         
         # Calculate next run time
@@ -184,7 +191,7 @@ class StorageManager:
     
     def get_schedule(self, schedule_id: int) -> Optional[Dict]:
         """Get a schedule by ID."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -213,7 +220,7 @@ class StorageManager:
     
     def get_all_schedules(self) -> List[Dict]:
         """Get all schedules."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -245,7 +252,7 @@ class StorageManager:
     def update_schedule(self, schedule_id: int, frequency_minutes: Optional[int] = None,
                        enabled: Optional[bool] = None):
         """Update a schedule."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         cursor = conn.cursor()
         
         updates = []
@@ -275,7 +282,7 @@ class StorageManager:
     
     def delete_schedule(self, schedule_id: int):
         """Delete a schedule."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         cursor = conn.cursor()
         
         cursor.execute("DELETE FROM schedules WHERE id = ?", (schedule_id,))
@@ -290,7 +297,7 @@ class StorageManager:
             from datetime import timedelta
             next_run = datetime.now() + timedelta(minutes=schedule["frequency_minutes"])
             
-            conn = sqlite3.connect(self.db_path)
+            conn = self._connect()
             cursor = conn.cursor()
             cursor.execute("UPDATE schedules SET next_run = ? WHERE id = ?", 
                          (next_run, schedule_id))
@@ -301,7 +308,7 @@ class StorageManager:
     
     def save_extracted_data(self, session_id: int, data: Any) -> int:
         """Save extracted data for a session."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -317,7 +324,7 @@ class StorageManager:
     
     def get_session_data(self, session_id: int, limit: int = 10) -> List[Dict]:
         """Get extracted data for a session."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -344,7 +351,7 @@ class StorageManager:
     
     def get_all_data(self, limit: int = 50) -> List[Dict]:
         """Get all extracted data across all sessions."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
