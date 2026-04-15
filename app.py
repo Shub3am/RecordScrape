@@ -149,6 +149,9 @@ def get_session(session_id):
 @app.route('/api/sessions/<int:session_id>', methods=['DELETE'])
 def delete_session(session_id):
     """Delete a session."""
+    for schedule in storage.get_all_schedules():
+        if schedule['session_id'] == session_id:
+            scheduler.remove_schedule(schedule['id'])
     storage.delete_session(session_id)
     return jsonify({"success": True, "message": "Session deleted"})
 
