@@ -4,14 +4,16 @@ Main application with REST API for managing sessions, schedules, and data extrac
 """
 
 from flask import Flask, render_template, request, jsonify, send_file
+import dataclasses
 import io
 import threading
 import logging
 from typing import Optional
 from pydantic import ValidationError
-from recordscrape.browsers import BROWSER_ERRORS, BrowserConfig
+from recordscrape.browsers import BACKENDS_WITHOUT_BINDINGS, BROWSER_ERRORS, BrowserConfig
 from recordscrape.exporters import EXPORT_FORMATS
 from recordscrape.flows import (
+    BrowserSettings,
     FlowFile,
     flow_file_json,
     flow_from_recorded_session,
@@ -29,7 +31,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Visible because recording needs a window the user can click in; runs choose their own headless.
+# A session's own browser settings, when it has them, replace the backend, proxy and humanize.
 BROWSER_CONFIG = BrowserConfig(backend="chromium", headless=False)
+# Records a session whose backend cannot record: the closest stealth backend, keeping its proxy.
+RECORDING_FALLBACK_BACKEND = "patchright"
 
 # Initialize components
 storage = StorageManager()
@@ -38,6 +43,8 @@ scheduler = ScraperScheduler(storage, browser_worker, BROWSER_CONFIG)
 
 # Global recorder instance (one at a time)
 current_recorder: Optional[SessionRecorder] = None
+# The browser settings the recording session is saved with; None means BROWSER_CONFIG.
+current_browser_settings: Optional[dict] = None
 recorder_lock = threading.Lock()
 
 
@@ -54,7 +61,7 @@ def index():
 @app.route('/api/sessions/start', methods=['POST'])
 def start_session():
     """Start recording a new session."""
-    global current_recorder
+    global current_recorder, current_browser_settings
     
     with recorder_lock:
         if current_recorder:
@@ -66,12 +73,28 @@ def start_session():
         if not url:
             return jsonify({"error": "URL is required"}), 400
 
-        recorder = SessionRecorder(BROWSER_CONFIG)
+        try:
+            browser_settings = (
+                BrowserSettings.model_validate(data['browser']).model_dump()
+                if data.get('browser') else None
+            )
+        except ValidationError as validation_error:
+            return jsonify({"error": f"Invalid browser settings: {validation_error}"}), 400
+
+        recording_browser_config = dataclasses.replace(BROWSER_CONFIG, **(browser_settings or {}))
+        if recording_browser_config.backend in BACKENDS_WITHOUT_BINDINGS:
+            recording_browser_config = dataclasses.replace(
+                recording_browser_config, backend=RECORDING_FALLBACK_BACKEND, humanize=False
+            )
+
+        recorder = SessionRecorder(recording_browser_config)
         try:
             browser_worker.submit(recorder.start(url)).result()
-        except BROWSER_ERRORS as browser_error:
+        # ValueError is a proxy URL that cannot be launched, such as one naming an unset env var.
+        except (*BROWSER_ERRORS, ValueError) as browser_error:
             return jsonify({"error": f"Could not open {url}: {browser_error}"}), 400
         current_recorder = recorder
+        current_browser_settings = browser_settings
 
         return jsonify({
             "success": True,
@@ -168,7 +191,8 @@ def stop_session():
             url=session_data['url'],
             actions=session_data['actions'],
             selectors=session_data.get('selectors', []),
-            table=session_data['table']
+            table=session_data['table'],
+            browser=current_browser_settings
         )
         
         current_recorder = None

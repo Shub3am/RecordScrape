@@ -9,6 +9,7 @@ import sys
 
 import pytest
 
+from tests.fixture_proxy import serve_authenticating_proxy
 from tests.fixture_site import find_closed_local_port, serve_fixture_pages
 
 FIXTURE_PAGES = {
@@ -117,6 +118,56 @@ def test_pagination_needs_rows_then_goes_into_the_saved_table(app_module, fixtur
     }
 
 
+@pytest.mark.parametrize(
+    "requested_backend, recording_backend",
+    [("patchright", "patchright"), ("cloakbrowser", "patchright")],
+    ids=["records-on-its-own-backend", "cloakbrowser-records-on-patchright"],
+)
+def test_recording_saves_the_browser_settings_it_was_started_with(
+    app_module, fixture_site_url, requested_backend, recording_backend
+):
+    client = app_module.app.test_client()
+    browser_settings = {"backend": requested_backend, "proxy": None, "humanize": False}
+
+    client.post(
+        "/api/sessions/start",
+        json={"url": f"{fixture_site_url}/products", "browser": {"backend": requested_backend}},
+    )
+    backend_while_recording = app_module.current_recorder.browser_config.backend
+    stop_response = client.post("/api/sessions/stop", json={"name": "Products"})
+
+    assert backend_while_recording == recording_backend
+    saved_session = client.get(f"/api/sessions/{stop_response.json['session_id']}").json
+    assert saved_session["browser"] == browser_settings
+
+
+@pytest.mark.parametrize(
+    "browser_settings, expected_error",
+    [
+        ({"backend": "chromium", "humanize": True}, "Invalid browser settings"),
+        (
+            {"backend": "chromium", "proxy": "http://${UNSET_PROXY_PASS}@proxy.test:8080"},
+            "UNSET_PROXY_PASS",
+        ),
+    ],
+    ids=["humanize-on-chromium", "proxy-env-var-not-set"],
+)
+def test_recording_with_unusable_browser_settings_fails_and_stays_idle(
+    app_module, fixture_site_url, browser_settings, expected_error, monkeypatch
+):
+    monkeypatch.delenv("UNSET_PROXY_PASS", raising=False)
+    client = app_module.app.test_client()
+
+    start_response = client.post(
+        "/api/sessions/start",
+        json={"url": f"{fixture_site_url}/products", "browser": browser_settings},
+    )
+
+    assert start_response.status_code == 400
+    assert expected_error in start_response.json["error"]
+    assert client.get("/api/status").json["recording"] is False
+
+
 def test_recording_an_unreachable_url_fails_and_stays_idle(app_module):
     client = app_module.app.test_client()
     unreachable_url = f"http://127.0.0.1:{find_closed_local_port()}/"
@@ -142,6 +193,26 @@ def test_manual_replay_extracts_and_saves_rows(app_module, fixture_site_url):
     saved_rows = client.get(f"/api/data/{session_id}").json[0]["data"]
     assert [row["value"] for row in saved_rows] == ["Shoe", "Hat"]
     assert client.get(f"/api/sessions/{session_id}").json["run_count"] == 1
+
+
+def test_manual_replay_runs_through_the_sessions_proxy(app_module, fixture_site_url):
+    client = app_module.app.test_client()
+    picked_elements = [{"selector": "h2.name", "fallbackSelectors": [], "attribute": "textContent"}]
+
+    with serve_authenticating_proxy("ana", "hunter2", {"shop.test": fixture_site_url}) as proxy:
+        browser_settings = {
+            "backend": "patchright",
+            "proxy": f"http://ana:hunter2@{proxy.address}",
+            "humanize": False,
+        }
+        session_id = app_module.storage.create_session(
+            "Products", "http://shop.test/products", [], picked_elements, browser=browser_settings
+        )
+        replay_response = client.post(f"/api/sessions/{session_id}/replay", json={"headless": True})
+
+    assert replay_response.json["success"] is True
+    assert replay_response.json["items_count"] == 2
+    assert "http://shop.test/products" in proxy.authenticated_urls
 
 
 @pytest.mark.parametrize(
