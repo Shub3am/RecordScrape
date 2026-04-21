@@ -4,7 +4,6 @@ Main application with REST API for managing sessions, schedules, and data extrac
 """
 
 from flask import Flask, render_template, request, jsonify
-from flask_cors import CORS
 import threading
 import logging
 from typing import Optional
@@ -16,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)
 
 # Initialize components
 storage = StorageManager()
@@ -283,7 +281,7 @@ if __name__ == '__main__':
     logger.info("Dashboard: http://localhost:5001")
     
     try:
-        app.run(debug=True, host='0.0.0.0', port=5001, threaded=True)
+        app.run(host='127.0.0.1', port=5001, threaded=True)
     except KeyboardInterrupt:
         logger.info("Shutting down...")
         scheduler.shutdown()
