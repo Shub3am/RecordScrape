@@ -5,11 +5,14 @@ Main application with REST API for managing sessions, schedules, and data extrac
 
 from flask import Flask, render_template, request, jsonify, send_file
 import dataclasses
+import hmac
 import io
+import os
 import threading
 import logging
 from typing import Optional
 from pydantic import ValidationError
+import waitress
 from recordscrape.browsers import BACKENDS_WITHOUT_BINDINGS, BROWSER_ERRORS, BrowserConfig
 from recordscrape.exporters import EXPORT_FORMATS
 from recordscrape.flows import (
@@ -20,6 +23,7 @@ from recordscrape.flows import (
     recorded_session_from_flow,
 )
 from recordscrape.recorder import SessionRecorder
+from recordscrape.server_settings import server_settings_from_env
 from recordscrape.worker import BrowserWorker
 from vpr import StorageManager, ScraperScheduler
 
@@ -36,8 +40,10 @@ BROWSER_CONFIG = BrowserConfig(backend="chromium", headless=False)
 # Records a session whose backend cannot record: the closest stealth backend, keeping its proxy.
 RECORDING_FALLBACK_BACKEND = "patchright"
 
+SERVER_SETTINGS = server_settings_from_env(os.environ)
+
 # Initialize components
-storage = StorageManager()
+storage = StorageManager(os.path.join(SERVER_SETTINGS.data_dir, "scraper.db"))
 browser_worker = BrowserWorker()
 scheduler = ScraperScheduler(storage, browser_worker, BROWSER_CONFIG)
 
@@ -46,6 +52,20 @@ current_recorder: Optional[SessionRecorder] = None
 # The browser settings the recording session is saved with; None means BROWSER_CONFIG.
 current_browser_settings: Optional[dict] = None
 recorder_lock = threading.Lock()
+
+
+# ==================== API TOKEN ====================
+
+@app.before_request
+def require_api_token():
+    """Refuses an /api request without the configured bearer token; the page itself stays open."""
+    if SERVER_SETTINGS.api_token is None or not request.path.startswith('/api/'):
+        return None
+    sent_token = request.headers.get('Authorization', '').removeprefix('Bearer ')
+    # compare_digest takes as long for a near miss as for a wrong first character.
+    if not hmac.compare_digest(sent_token.encode(), SERVER_SETTINGS.api_token.encode()):
+        return jsonify({"error": "Missing or wrong API token"}), 401
+    return None
 
 
 # ==================== WEB ROUTES ====================
@@ -407,12 +427,9 @@ def internal_error(e):
 # ==================== MAIN ====================
 
 if __name__ == '__main__':
-    logger.info("Starting Visual Data Scraper...")
-    logger.info("Dashboard: http://localhost:5001")
-    
-    try:
-        app.run(host='127.0.0.1', port=5001, threaded=True)
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
-        scheduler.shutdown()
-        browser_worker.stop()
+    logger.info(f"Dashboard: http://{SERVER_SETTINGS.host}:{SERVER_SETTINGS.port}")
+    # waitress.serve returns, instead of raising, when it is stopped with Ctrl+C.
+    waitress.serve(app, host=SERVER_SETTINGS.host, port=SERVER_SETTINGS.port)
+    logger.info("Shutting down...")
+    scheduler.shutdown()
+    browser_worker.stop()
