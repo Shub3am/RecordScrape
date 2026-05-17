@@ -70,7 +70,28 @@ uv run playwright install chromium
 uv run python app.py
 ```
 
-4. Open your browser to `http://localhost:5001`. The server only listens on localhost.
+4. Open your browser to `http://localhost:5001`. By default the server only listens on localhost.
+
+## Running on a Server
+
+The server reads its settings from environment variables:
+
+| Variable | Default | What it sets |
+|----------|---------|--------------|
+| `RECORDSCRAPE_HOST` | `127.0.0.1` | Address to listen on. `0.0.0.0` listens on every interface |
+| `RECORDSCRAPE_PORT` | `5001` | Port to listen on |
+| `RECORDSCRAPE_DATA_DIR` | current directory | Existing folder that holds `scraper.db` |
+| `RECORDSCRAPE_TOKEN` | none | Secret every `/api` request must send as `Authorization: Bearer <token>` |
+
+Listening on anything but localhost refuses to start without `RECORDSCRAPE_TOKEN`, so the API is never open to the network. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+
+```bash
+RECORDSCRAPE_HOST=0.0.0.0 RECORDSCRAPE_TOKEN=your-token uv run python app.py
+```
+
+The dashboard asks for the token the first time the server refuses it, and keeps it in that browser. The token travels in plain text over HTTP, so put the server behind HTTPS (a reverse proxy such as Caddy or nginx) when it is reachable beyond a private network.
+
+Recording opens a browser window on the machine running the server, so record on your own machine, export the flow, and import it on the server. Runs and schedules work there headless.
 
 ## Running tests
 
