@@ -24,12 +24,12 @@ def test_deleting_session_removes_its_scheduled_jobs(app_module):
     schedule_response = client.post(
         "/api/schedules", json={"session_id": session_id, "frequency_minutes": 30}
     )
-    job_id = f"schedule_{schedule_response.json['schedule_id']}"
-    assert app_module.scheduler.scheduler.get_job(job_id) is not None
+    schedule_id = schedule_response.json["schedule_id"]
+    assert app_module.scheduler.get_job_status(schedule_id) is not None
 
     client.delete(f"/api/sessions/{session_id}")
 
-    assert app_module.scheduler.scheduler.get_job(job_id) is None
+    assert app_module.scheduler.get_job_status(schedule_id) is None
 
 
 def test_api_does_not_grant_cross_origin_access(app_module):
