@@ -6,6 +6,7 @@ Self-hosted tool: record a browser session in a web dashboard, pick elements, re
 
 - `app.py`: Flask server and REST API for the dashboard. Single file, no module doc.
 - `vpr/`: recording, replay, scheduling and SQLite storage engine. See `vpr/CLAUDE.md`.
+- `recordscrape/worker/`: the one thread and event loop that all browser work runs on. See `recordscrape/worker/CLAUDE.md`.
 - `templates/`, `static/`: dashboard UI, vanilla HTML/CSS/JS with no build step.
 - `tests/`: pytest suite. Tests that import `app.py` must use the `app_module` fixture in `tests/test_app_routes.py`.
 
