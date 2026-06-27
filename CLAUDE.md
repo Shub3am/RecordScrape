@@ -15,7 +15,7 @@ Self-hosted tool: record a browser session in a web dashboard, pick elements, re
 - Install: `uv sync`
 - Run: `uv run python app.py`, then open http://localhost:5001
 - Test: `uv run pytest`
-- Lint: `uv run ruff check tests` and `uv run ruff format --check tests`
+- Lint: `uv run ruff check tests recordscrape` and `uv run ruff format --check tests recordscrape`
 - Deploy: none. This is a self-hosted tool, and CI (`.github/workflows/ci.yml`) only tests.
 
 ## Repo-wide rules

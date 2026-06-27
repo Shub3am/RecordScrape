@@ -19,6 +19,6 @@ jobs:
           enable-cache: true
       - run: uv sync --locked
       # Lint covers only code written under the current rules; modules join as they are rewritten.
-      - run: uv run ruff check tests
-      - run: uv run ruff format --check tests
+      - run: uv run ruff check tests recordscrape
+      - run: uv run ruff format --check tests recordscrape
       - run: uv run pytest
