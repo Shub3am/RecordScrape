@@ -12,7 +12,7 @@ Self-hosted tool: record a browser session in a web dashboard, pick elements, re
 
 ## Run, test, deploy
 
-- Install: `uv sync`
+- Install: `uv sync`, then `uv run playwright install chromium` and `uv run patchright install chromium`
 - Run: `uv run python app.py`, then open http://localhost:5001
 - Test: `uv run pytest`
 - Lint: `uv run ruff check tests recordscrape` and `uv run ruff format --check tests recordscrape`

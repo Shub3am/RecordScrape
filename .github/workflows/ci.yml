@@ -18,6 +18,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - run: uv sync --locked
+      # Both libraries share one download when their versions match; the second call is then a no-op.
+      - run: uv run playwright install --with-deps chromium
+      - run: uv run patchright install chromium
       # Lint covers only code written under the current rules; modules join as they are rewritten.
       - run: uv run ruff check tests recordscrape
       - run: uv run ruff format --check tests recordscrape
