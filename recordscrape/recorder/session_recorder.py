@@ -1,5 +1,6 @@
 """
-Records one browsing session: the user's actions on every page they visit, as replayable steps.
+Records one browsing session: the user's actions on every page they visit as replayable steps, and
+the elements they pick for extraction.
 Must not know about storage, Flask or the worker; callers run it on the worker and persist what
 stop() returns.
 """
@@ -8,7 +9,11 @@ import time
 from contextlib import AsyncExitStack
 
 from recordscrape.browsers import BrowserConfig, open_browser_context
-from recordscrape.recorder.recorder_script import RECORD_BINDING, RECORDER_INIT_SCRIPT
+from recordscrape.recorder.recorder_script import (
+    ACTIVATE_PICKER_SCRIPT,
+    RECORD_BINDING,
+    RECORDER_INIT_SCRIPT,
+)
 
 
 class SessionRecorder:
@@ -16,6 +21,8 @@ class SessionRecorder:
         self.browser_config = browser_config
         self.start_url = ""
         self.recorded_actions: list[dict] = []
+        self.picked_elements: list[dict] = []
+        # The page the user last acted on, which is where the picker opens.
         self.active_page = None
         self.context_exit_stack: AsyncExitStack | None = None
 
@@ -36,13 +43,25 @@ class SessionRecorder:
             # the stack is still owned by this block and the browser has already been closed.
             self.context_exit_stack = context_exit_stack.pop_all()
 
+    async def activate_picker(self) -> None:
+        """Opens the picker overlay and returns at once; picks arrive until the user presses Done."""
+        await self.active_page.evaluate(ACTIVATE_PICKER_SCRIPT)
+
     async def stop(self) -> dict:
         """Closes the browser and returns the session, keyed like vpr's SessionRecorder output."""
         await self.context_exit_stack.aclose()
-        return {"url": self.start_url, "actions": self.recorded_actions}
+        return {
+            "url": self.start_url,
+            "actions": self.recorded_actions,
+            "selectors": self.picked_elements,
+        }
 
     def receive_page_message(self, binding_source: dict, page_message: dict) -> None:
-        self.record_action(page_message["action"])
+        self.active_page = binding_source["page"]
+        if page_message["kind"] == "pick":
+            self.picked_elements.append(page_message["pickedElement"])
+        else:
+            self.record_action(page_message["action"])
 
     def record_action(self, action: dict) -> None:
         action["timestamp"] = time.time()
