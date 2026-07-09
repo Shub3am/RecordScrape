@@ -16,10 +16,21 @@ A powerful visual browser automation platform for recording interactions and aut
 
 ## 🎥 Demo
 
+![Recording quotes.toscrape.com: pick rows and the Next button, replay across 10 pages, schedule it](docs/images/demo.gif)
+
+One recording on [quotes.toscrape.com](https://quotes.toscrape.com/), a site built for scraping practice: two clicks pick the quotes as rows, one more adds the author column, and the Next button makes every run read all 10 pages, 100 records.
+
 ▶ Full video:  
 https://twitter.com/Shubh3m/status/2027349108256887131
 
 Record once → Automate forever.
+
+<details>
+<summary>The whole dashboard after that run</summary>
+
+![RecordScrape dashboard with a saved session, its schedule and 100 extracted records](docs/images/dashboard.png)
+
+</details>
 
 
 ## Architecture
@@ -134,6 +145,8 @@ uv run pytest
 2. Click the same field in two different items, for example the name of the first and the second product. Every item that repeats like them is highlighted as a row. For a plain list whose items hold only text, click two items themselves
 3. Click other fields inside any highlighted row to add them as columns, then **"Done"**
 
+![Row picker: every quote outlined as a row, the quote text and author outlined as columns](docs/images/row-picker.png)
+
 Each run then saves one record per row, such as `{"name": "Shoe", "price": "$40"}`. A column is named after the clicked element's first CSS class; rename it in an exported flow file. Elements picked with **"Select Elements"** in the same session are added to every row, keyed by their selector.
 
 ### Following a List Across Pages
@@ -152,6 +165,8 @@ The last choice wins. Elements picked with **"Select Elements"** are read on the
 3. Extracted data appears in **"Recent Data Extractions"**
 4. Click **"JSON"**, **"CSV"** or **"JSONL"** on a run to download its data
 
+<img src="docs/images/extracted-data.png" alt="A run's card: 100 items, each with author and text, and JSON, CSV and JSONL download buttons" width="380">
+
 A CSV has one column per field and one line per row or picked value. A value that a spreadsheet would run as a formula (one starting with `=`, `+`, `-` or `@` that is not a plain number) gets a leading `'` so it opens as text. JSON and JSONL keep every value exactly as scraped.
 
 ### Exporting and Importing Flows
@@ -165,6 +180,8 @@ A flow file holds the start URL, the recorded steps (`click`, `input`, `scroll`)
 ### Stealth Browsers and Proxies
 
 Next to the URL box, pick the browser a session records and runs on, and an optional proxy:
+
+![Record New Session with CloakBrowser picked, human-like input ticked and a proxy URL using environment variables](docs/images/browser-settings.png)
 
 | Browser | What it is | Install |
 |---------|------------|---------|
@@ -210,6 +227,7 @@ RecordScrape/
 ├── templates/
 │   └── index.html         # Dashboard HTML
 ├── tests/                 # pytest suite
+├── docs/images/           # README screenshots and demo GIF
 ├── pyproject.toml         # Project metadata and dependencies
 ├── uv.lock                # Pinned dependency versions
 └── LICENSE
