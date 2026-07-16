@@ -317,6 +317,7 @@ async function replaySession(sessionId) {
 
         if (result.success) {
             showNotification(`Extracted ${result.items_count} items!`, 'success');
+            loadSessions();
             loadData();
         } else {
             showNotification(result.error || 'Replay failed', 'error');
