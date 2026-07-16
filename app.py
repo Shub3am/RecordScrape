@@ -7,7 +7,12 @@ from flask import Flask, render_template, request, jsonify
 import threading
 import logging
 from typing import Optional
-from vpr import SessionRecorder, SessionReplayer, StorageManager, ScraperScheduler
+from patchright.async_api import Error as PatchrightError
+from playwright.async_api import Error as PlaywrightError
+from recordscrape.browsers import BrowserConfig
+from recordscrape.recorder import SessionRecorder
+from recordscrape.worker import BrowserWorker
+from vpr import StorageManager, ScraperScheduler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,9 +21,14 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 
+BROWSER_BACKEND = "chromium"
+# Recording needs a window the user can click in.
+RECORDING_BROWSER_CONFIG = BrowserConfig(backend=BROWSER_BACKEND, headless=False)
+
 # Initialize components
 storage = StorageManager()
-scheduler = ScraperScheduler(storage)
+browser_worker = BrowserWorker()
+scheduler = ScraperScheduler(storage, browser_worker, BROWSER_BACKEND)
 
 # Global recorder instance (one at a time)
 current_recorder: Optional[SessionRecorder] = None
@@ -41,28 +51,22 @@ def start_session():
     global current_recorder
     
     with recorder_lock:
-        if current_recorder and current_recorder.is_recording():
+        if current_recorder:
             return jsonify({"error": "Recording already in progress"}), 400
-        
+
         data = request.json
         url = data.get('url')
-        
+
         if not url:
             return jsonify({"error": "URL is required"}), 400
-        
-        # Start recording in a separate thread
-        current_recorder = SessionRecorder()
-        recorder = current_recorder  # Local reference for type checking
-        
-        def start_recording():
-            success = recorder.start_recording(url)
-            if not success:
-                logger.error("Failed to start recording")
-        
-        thread = threading.Thread(target=start_recording)
-        thread.start()
-        thread.join(timeout=5)  # Wait for browser to start
-        
+
+        recorder = SessionRecorder(RECORDING_BROWSER_CONFIG)
+        try:
+            browser_worker.submit(recorder.start(url)).result()
+        except (PlaywrightError, PatchrightError) as browser_error:
+            return jsonify({"error": f"Could not open {url}: {browser_error}"}), 400
+        current_recorder = recorder
+
         return jsonify({
             "success": True,
             "message": "Recording started",
@@ -75,18 +79,11 @@ def activate_selector():
     """Activate element selector mode."""
     global current_recorder
     
-    if not current_recorder or not current_recorder.is_recording():
+    if not current_recorder:
         return jsonify({"error": "No active recording"}), 400
-    
-    recorder = current_recorder  # Local reference for type checking
-    
-    # Activate selector in background
-    def run_selector():
-        recorder.activate_selector_mode()
-    
-    thread = threading.Thread(target=run_selector)
-    thread.start()
-    
+
+    browser_worker.submit(current_recorder.activate_picker()).result()
+
     return jsonify({
         "success": True,
         "message": "Selector mode activated"
@@ -99,18 +96,14 @@ def stop_session():
     global current_recorder
     
     with recorder_lock:
-        if not current_recorder or not current_recorder.is_recording():
+        if not current_recorder:
             return jsonify({"error": "No active recording"}), 400
-        
+
         data = request.json
         name = data.get('name', 'Untitled Session')
-        
-        # Stop recording
-        session_data = current_recorder.stop_recording()
-        
-        if not session_data:
-            return jsonify({"error": "Failed to stop recording"}), 500
-        
+
+        session_data = browser_worker.submit(current_recorder.stop()).result()
+
         # Save to database
         session_id = storage.create_session(
             name=name,
@@ -253,7 +246,7 @@ def get_session_data(session_id):
 def get_status():
     """Get application status."""
     return jsonify({
-        "recording": current_recorder is not None and current_recorder.is_recording(),
+        "recording": current_recorder is not None,
         "sessions_count": len(storage.get_all_sessions()),
         "schedules_count": len(storage.get_all_schedules()),
         "scheduler_running": scheduler.scheduler.running
@@ -283,3 +276,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logger.info("Shutting down...")
         scheduler.shutdown()
+        browser_worker.stop()
