@@ -5,13 +5,12 @@ reach exposed bindings on every document, and leaving the context closes the bro
 """
 
 import asyncio
-import http.server
 import logging
-import threading
 
 import pytest
 
 from recordscrape.browsers import BINDINGS_READY_EVENT, BrowserConfig, open_browser_context
+from tests.fixture_site import serve_fixture_pages
 
 FIXTURE_PAGES = {
     "/first": '<title>First</title><a id="to-second" href="/second">second</a>',
@@ -33,27 +32,10 @@ REPORT_DOCUMENT_SCRIPT = f"""
 ALL_BACKENDS = ["chromium", "patchright"]
 
 
-class FixturePageHandler(http.server.BaseHTTPRequestHandler):
-    def log_message(self, *args):
-        pass
-
-    def do_GET(self):
-        if self.path not in FIXTURE_PAGES:
-            self.send_error(404)
-            return
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html")
-        self.end_headers()
-        self.wfile.write(f"<!doctype html><html>{FIXTURE_PAGES[self.path]}</html>".encode())
-
-
 @pytest.fixture(scope="module")
 def fixture_site_url():
-    fixture_server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FixturePageHandler)
-    threading.Thread(target=fixture_server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{fixture_server.server_address[1]}"
-    fixture_server.shutdown()
-    fixture_server.server_close()
+    with serve_fixture_pages(FIXTURE_PAGES) as site_url:
+        yield site_url
 
 
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
