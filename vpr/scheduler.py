@@ -3,12 +3,13 @@ Scraper Scheduler for Visual Data Scraper
 Manages periodic execution of scraping sessions using APScheduler.
 """
 
+import dataclasses
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from recordscrape.browsers import BackendName, BrowserConfig
+from recordscrape.browsers import BrowserConfig
 from recordscrape.runner import run_session
 from recordscrape.worker import BrowserWorker
 from vpr.storage import StorageManager
@@ -23,11 +24,11 @@ class ScraperScheduler:
     """Manages scheduled scraping jobs."""
     
     def __init__(self, storage: StorageManager, browser_worker: BrowserWorker,
-                 browser_backend: BackendName):
-        """Initialize the scheduler."""
+                 browser_config: BrowserConfig):
+        """Initialize the scheduler. Each run uses browser_config with its own headless choice."""
         self.storage = storage
         self.browser_worker = browser_worker
-        self.browser_backend = browser_backend
+        self.browser_config = browser_config
         self.scheduler = BackgroundScheduler()
         self.scheduler.start()
         self.jobs = {}  # Map schedule_id to job_id
@@ -151,7 +152,7 @@ class ScraperScheduler:
                 logger.error(f"Session {session_id} not found")
                 return
             
-            result = self.run_on_worker(session, headless=True)
+            result = self._run_on_worker(session, headless=True)
             
             # Save extracted data
             if result.get("success"):
@@ -179,7 +180,7 @@ class ScraperScheduler:
             headless: Whether to run in headless mode (default: False for visible browser)
             
         Returns:
-            Result dictionary from replayer
+            Result dictionary from run_session
         """
         mode = "headless" if headless else "visible browser"
         logger.info(f"Running manual scrape for session {session_id} in {mode} mode")
@@ -190,7 +191,7 @@ class ScraperScheduler:
             if not session:
                 return {"success": False, "error": "Session not found"}
             
-            result = self.run_on_worker(session, headless=headless)
+            result = self._run_on_worker(session, headless=headless)
             
             # Save extracted data
             if result.get("success"):
@@ -208,10 +209,10 @@ class ScraperScheduler:
             logger.error(f"Error in manual scrape: {e}")
             return {"success": False, "error": str(e)}
     
-    def run_on_worker(self, session: dict, headless: bool) -> dict:
+    def _run_on_worker(self, session: dict, headless: bool) -> dict:
         """Runs a session on the browser worker and blocks this thread until its result is ready."""
-        browser_config = BrowserConfig(backend=self.browser_backend, headless=headless)
-        return self.browser_worker.submit(run_session(browser_config, session)).result()
+        run_browser_config = dataclasses.replace(self.browser_config, headless=headless)
+        return self.browser_worker.submit(run_session(run_browser_config, session)).result()
 
     def get_job_status(self, schedule_id: int) -> Optional[dict]:
         """Get status of a scheduled job."""
