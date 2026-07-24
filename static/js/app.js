@@ -174,8 +174,8 @@ async function activatePicker(endpoint, pickerName, instructions) {
 }
 
 async function stopRecording() {
-    // Generate UUID for session name
-    const name = 'Session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+    const sessionNameInput = document.getElementById('session-name-input');
+    const name = sessionNameInput.value.trim();
 
     try {
         const response = await apiFetch(`/sessions/stop`, {
@@ -191,6 +191,7 @@ async function stopRecording() {
             recordingStatus = 'idle';
             updateRecordingUI();
             document.getElementById('url-input').value = '';
+            sessionNameInput.value = '';
             loadSessions();
         } else {
             showNotification(result.error || 'Failed to save session', 'error');

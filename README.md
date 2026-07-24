@@ -133,7 +133,7 @@ uv run pytest
 
 ### Recording a Session
 
-1. In **"Record New Session"**, enter the URL you want to scrape and click **"Start Recording"**
+1. In **"Record New Session"**, enter the URL you want to scrape, optionally a session name (it defaults to the site's host name), and click **"Start Recording"**
 2. A browser window opens on that URL (see [Stealth Browsers and Proxies](#stealth-browsers-and-proxies) to pick which one)
 3. Click **"Select Elements"** and click the elements you want to extract, then **"Done"** in the overlay
 4. For a list of items, click **"Select Rows"** instead (see below)

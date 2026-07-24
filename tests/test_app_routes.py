@@ -6,6 +6,7 @@ app.py builds its StorageManager, browser worker and scheduler at import time, s
 import dataclasses
 import importlib
 import sys
+from urllib.parse import urlparse
 
 import pytest
 
@@ -119,6 +120,19 @@ def test_recording_through_the_api_saves_the_session(app_module, fixture_site_ur
     assert saved_session["actions"][0]["type"] == "navigate"
     assert saved_session["selectors"] == []
     assert saved_session["table"] is None
+
+
+@pytest.mark.parametrize("typed_name", ["", "   "], ids=["empty", "whitespace"])
+def test_a_session_saved_without_a_name_is_named_after_its_host(
+    app_module, fixture_site_url, typed_name
+):
+    client = app_module.app.test_client()
+
+    client.post("/api/sessions/start", json={"url": f"{fixture_site_url}/products"})
+    stop_response = client.post("/api/sessions/stop", json={"name": typed_name})
+
+    saved_session = client.get(f"/api/sessions/{stop_response.json['session_id']}").json
+    assert saved_session["name"] == urlparse(fixture_site_url).hostname
 
 
 @pytest.mark.parametrize("picker_route", ["rows", "next-button", "infinite-scroll"])
