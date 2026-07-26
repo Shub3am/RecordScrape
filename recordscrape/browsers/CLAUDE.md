@@ -26,4 +26,4 @@ The recorder, the runner, flows, storage, Flask, the scheduler or the worker thr
 
 ## Who calls it
 
-Nothing yet. The recorder and runner will open contexts through it, on the worker from `recordscrape/worker/`.
+`recordscrape/recorder/` opens its recording context here. The runner will too. Both run on the worker from `recordscrape/worker/`.
