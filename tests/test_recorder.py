@@ -1,7 +1,8 @@
 """
 Tests for the recorder, run headless against a local fixture site on every backend.
 They pin what later steps build on: actions survive navigation, typing becomes one step per field,
-selectors fall back from stable to structural, and the browser never outlives the recording.
+selectors fall back from stable to structural, picking never acts on the page, and the browser never
+outlives the recording.
 """
 
 import asyncio
@@ -20,6 +21,10 @@ FIXTURE_PAGES = {
     "/results": (
         '<title>Results</title><button data-testid="save-result">save</button>'
         '<div style="height: 3000px"></div>'
+    ),
+    "/listing": (
+        '<title>Listing</title><h1 class="headline">Deals</h1>'
+        '<a id="deal-link" href="/form">deal</a>'
     ),
 }
 
@@ -81,6 +86,56 @@ def test_actions_are_recorded_across_navigation(backend, fixture_site_url):
             "fallbackSelectors": ["html > body:nth-of-type(1) > button:nth-of-type(1)"],
         },
         {"type": "scroll", "x": 0, "y": 500},
+    ]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_picker_collects_elements_without_acting_on_the_page(backend, fixture_site_url):
+    async def pick_headline_and_link_then_follow_link():
+        recorder = SessionRecorder(BrowserConfig(backend=backend))
+        await recorder.start(f"{fixture_site_url}/listing")
+        page = recorder.active_page
+        await recorder.activate_picker()
+        await page.click("h1")
+        await page.click("#deal-link")
+        await wait_until(lambda: len(recorder.picked_elements) == 2)
+        url_while_picking = page.url
+        await page.click("#recordscrape-picker-done")
+        headline_style_after_done = await page.locator("h1").get_attribute("style")
+        await page.click("#deal-link")
+        await page.wait_for_url("**/form")
+        await wait_until(lambda: recorder.recorded_actions[-1]["type"] == "click")
+        return url_while_picking, headline_style_after_done, await recorder.stop()
+
+    url_while_picking, headline_style_after_done, recorded_session = asyncio.run(
+        pick_headline_and_link_then_follow_link()
+    )
+
+    assert url_while_picking == f"{fixture_site_url}/listing"
+    assert headline_style_after_done is None
+    assert recorded_session["selectors"] == [
+        {
+            "selector": "h1.headline",
+            "fallbackSelectors": ["html > body:nth-of-type(1) > h1:nth-of-type(1)"],
+            "tagName": "H1",
+            "attribute": "textContent",
+            "preview": "Deals...",
+        },
+        {
+            "selector": "#deal-link",
+            "fallbackSelectors": ["html > body:nth-of-type(1) > a:nth-of-type(1)"],
+            "tagName": "A",
+            "attribute": "href",
+            "preview": "deal...",
+        },
+    ]
+    assert without_timestamps(recorded_session["actions"]) == [
+        {"type": "navigate", "url": f"{fixture_site_url}/listing"},
+        {
+            "type": "click",
+            "selector": "#deal-link",
+            "fallbackSelectors": ["html > body:nth-of-type(1) > a:nth-of-type(1)"],
+        },
     ]
 
 

@@ -10,6 +10,13 @@ from recordscrape.browsers import BINDINGS_READY_EVENT
 
 RECORD_BINDING = "__recordscrapeRecord"
 
+ACTIVATE_PICKER_EVENT = "recordscrape:activate-picker"
+
+# A DOM event reaches listeners in every JS world, so this works from Patchright's isolated evaluate.
+ACTIVATE_PICKER_SCRIPT = (
+    f"() => window.dispatchEvent(new Event({json.dumps(ACTIVATE_PICKER_EVENT)}))"
+)
+
 
 def read_page_script(file_name: str) -> str:
     return (Path(__file__).parent / file_name).read_text()
@@ -24,10 +31,12 @@ RECORDER_INIT_SCRIPT = f"""
 {read_page_script("selector_builder.js")}
 {read_page_script("recorder_channel.js")}
 {read_page_script("action_capture.js")}
+{read_page_script("element_picker.js")}
   const sendToRecorder = createRecorderChannel(
     {json.dumps(RECORD_BINDING)},
     {json.dumps(BINDINGS_READY_EVENT)},
   );
+  installElementPicker(sendToRecorder, {json.dumps(ACTIVATE_PICKER_EVENT)});
   startActionCapture(sendToRecorder);
 }})();
 """
