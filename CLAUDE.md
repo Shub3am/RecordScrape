@@ -9,6 +9,7 @@ Self-hosted tool: record a browser session in a web dashboard, pick elements, re
 - `recordscrape/worker/`: the one thread and event loop that all browser work runs on. See `recordscrape/worker/CLAUDE.md`.
 - `recordscrape/browsers/`: opens a browser context for the chromium or patchright backend. See `recordscrape/browsers/CLAUDE.md`.
 - `recordscrape/recorder/`: records a browsing session as steps with fallback selectors. See `recordscrape/recorder/CLAUDE.md`.
+- `recordscrape/runner/`: re-reads a recorded session's picked elements headless. See `recordscrape/runner/CLAUDE.md`.
 - `templates/`, `static/`: dashboard UI, vanilla HTML/CSS/JS with no build step.
 - `tests/`: pytest suite. Tests that import `app.py` must use the `app_module` fixture in `tests/test_app_routes.py`.
 
