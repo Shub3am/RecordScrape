@@ -15,6 +15,11 @@ BINDINGS_READY_EVENT = "recordscrape:bindings-ready"
 
 ANNOUNCE_BINDINGS_READY_SCRIPT = f"() => window.dispatchEvent(new Event('{BINDINGS_READY_EVENT}'))"
 
+HARMLESS_ANNOUNCE_ERROR_MESSAGES = (
+    "Execution context was destroyed",
+    "Target page, context or browser has been closed",
+)
+
 
 @asynccontextmanager
 async def open_patchright_context(browser_config: BrowserConfig) -> AsyncIterator[BrowserContext]:
@@ -42,8 +47,13 @@ async def announce_bindings_ready(page: Page) -> None:
     try:
         await page.evaluate(ANNOUNCE_BINDINGS_READY_SCRIPT, isolated_context=False)
     except Error as evaluate_error:
-        # A navigation replaced the document mid-evaluate, typically a new tab's about:blank being
-        # replaced by its first goto. The new document is announced on its own domcontentloaded.
-        # Patchright has no dedicated error type for this, so the message is the only signal.
-        if "Execution context was destroyed" not in evaluate_error.message:
+        # Two races leave nothing to announce. A navigation replaced the document mid-evaluate,
+        # typically a new tab's about:blank being replaced by its first goto, and the new document
+        # is announced on its own domcontentloaded. Or the browser closed mid-evaluate, as when a
+        # caller leaves the context right after a failed goto. Patchright exports no error type for
+        # either, so the message is the only signal.
+        if not any(
+            harmless_message in evaluate_error.message
+            for harmless_message in HARMLESS_ANNOUNCE_ERROR_MESSAGES
+        ):
             raise

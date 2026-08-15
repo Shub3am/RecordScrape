@@ -6,8 +6,11 @@ reach exposed bindings on every document, and leaving the context closes the bro
 
 import asyncio
 import logging
+import socket
 
 import pytest
+from patchright.async_api import Error as PatchrightError
+from playwright.async_api import Error as PlaywrightError
 
 from recordscrape.browsers import BINDINGS_READY_EVENT, BrowserConfig, open_browser_context
 from tests.fixture_site import serve_fixture_pages
@@ -76,6 +79,23 @@ def test_page_scripts_reach_exposed_bindings_on_every_document(backend, fixture_
         return [path for path in reported_paths if path != "blank"]
 
     assert asyncio.run(collect_reported_documents()) == ["/first", "/second", "/third"]
+    assert [record for record in caplog.records if record.levelno >= logging.ERROR] == []
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_closing_right_after_a_failed_load_logs_no_error(backend, caplog):
+    with socket.socket() as probe_socket:
+        probe_socket.bind(("127.0.0.1", 0))
+        closed_port = probe_socket.getsockname()[1]
+
+    async def fail_a_load_then_leave_context():
+        async with open_browser_context(BrowserConfig(backend=backend)) as browser_context:
+            page = await browser_context.new_page()
+            with pytest.raises((PlaywrightError, PatchrightError)):
+                await page.goto(f"http://127.0.0.1:{closed_port}/")
+
+    for _ in range(3):
+        asyncio.run(fail_a_load_then_leave_context())
     assert [record for record in caplog.records if record.levelno >= logging.ERROR] == []
 
 
