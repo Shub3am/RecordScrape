@@ -1,6 +1,6 @@
 """
 Records one browsing session: the user's actions on every page they visit as replayable steps, and
-the elements they pick for extraction.
+the elements, row table and table pagination they pick for extraction.
 Must not know about storage, Flask or the worker; callers run it on the worker and persist what
 stop() returns.
 """
@@ -10,11 +10,15 @@ from contextlib import AsyncExitStack
 
 from recordscrape.browsers import BrowserConfig, open_browser_context
 from recordscrape.recorder.recorder_script import (
+    ACTIVATE_NEXT_BUTTON_PICKER_SCRIPT,
     ACTIVATE_PICKER_SCRIPT,
     ACTIVATE_ROW_PICKER_SCRIPT,
     RECORD_BINDING,
     RECORDER_INIT_SCRIPT,
 )
+
+DEFAULT_MAX_PAGES = 10
+DEFAULT_MAX_SCROLLS = 10
 
 
 class SessionRecorder:
@@ -24,6 +28,7 @@ class SessionRecorder:
         self.recorded_actions: list[dict] = []
         self.picked_elements: list[dict] = []
         self.row_table: dict | None = None
+        self.table_pagination: dict | None = None
         # The page the user last acted on, which is where the picker opens.
         self.active_page = None
         self.context_exit_stack: AsyncExitStack | None = None
@@ -53,14 +58,28 @@ class SessionRecorder:
         """Opens the picker overlay in row mode and returns at once; the table arrives as it grows."""
         await self.active_page.evaluate(ACTIVATE_ROW_PICKER_SCRIPT)
 
+    async def activate_next_button_picker(self) -> None:
+        """Opens the picker overlay for one click on the next page button and returns at once."""
+        await self.active_page.evaluate(ACTIVATE_NEXT_BUTTON_PICKER_SCRIPT)
+
+    def use_infinite_scroll(self) -> None:
+        """Makes the row table load more rows by scrolling, replacing any picked next button."""
+        self.table_pagination = {"mode": "infiniteScroll", "maxScrolls": DEFAULT_MAX_SCROLLS}
+
     async def stop(self) -> dict:
-        """Closes the browser and returns the session, keyed like vpr's SessionRecorder output."""
+        """Closes the browser and returns the session, keyed like vpr's SessionRecorder output. The
+        pagination goes inside the row table; without a table there is nothing to paginate."""
         await self.context_exit_stack.aclose()
+        paginated_row_table = (
+            self.row_table
+            if self.row_table is None or self.table_pagination is None
+            else {**self.row_table, "pagination": self.table_pagination}
+        )
         return {
             "url": self.start_url,
             "actions": self.recorded_actions,
             "selectors": self.picked_elements,
-            "table": self.row_table,
+            "table": paginated_row_table,
         }
 
     def receive_page_message(self, binding_source: dict, page_message: dict) -> None:
@@ -70,6 +89,12 @@ class SessionRecorder:
         elif page_message["kind"] == "table":
             # The page sends the whole table on every change, so the latest message is the table.
             self.row_table = page_message["table"]
+        elif page_message["kind"] == "nextButton":
+            self.table_pagination = {
+                "mode": "nextButton",
+                **page_message["nextButton"],
+                "maxPages": DEFAULT_MAX_PAGES,
+            }
         else:
             self.record_action(page_message["action"])
 

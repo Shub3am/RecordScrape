@@ -35,6 +35,15 @@ FIXTURE_PAGES = {
         '</ul><p id="footer">footer</p>'
     ),
     "/tags": '<title>Tags</title><ul class="tags"><li>red</li><li>blue</li><li>green</li></ul>',
+    "/shop?page=1": (
+        '<title>Shop</title><ul class="results"><li class="card"><h2 class="name">Shoe</h2></li>'
+        '<li class="card"><h2 class="name">Hat</h2></li></ul>'
+        '<a class="next" href="/shop?page=2">Next</a>'
+    ),
+    "/shop?page=2": (
+        '<title>Shop</title><ul class="results"><li class="card"><h2 class="name">Boot</h2></li>'
+        '<li class="card"><h2 class="name">Cap</h2></li></ul>'
+    ),
 }
 CARD_NAME_COLUMN = {
     "name": "name",
@@ -358,3 +367,62 @@ def test_row_picker_refuses_a_second_example_from_the_same_row(backend, fixture_
     assert table_after_refusal is None
     assert recorded_session["table"]["rowSelector"] == "ul.results > li.card"
     assert recorded_session["table"]["columns"] == [CARD_NAME_COLUMN]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_next_button_picker_records_a_pagination_that_replays_every_page(backend, fixture_site_url):
+    async def pick_rows_and_next_button_then_replay():
+        async with started_recorder(backend, f"{fixture_site_url}/shop?page=1") as recorder:
+            page = recorder.active_page
+            await recorder.activate_row_picker()
+            await page.locator("h2").nth(0).click()
+            await page.locator("h2").nth(1).click()
+            await wait_until(lambda: recorder.row_table is not None)
+            await page.click("#recordscrape-picker-done")
+            await recorder.activate_next_button_picker()
+            await page.click("a.next")
+            await wait_until(lambda: recorder.table_pagination is not None)
+            url_after_pick = page.url
+            recorded_session = await recorder.stop()
+        run_result = await run_session(BrowserConfig(backend=backend), recorded_session)
+        return url_after_pick, recorded_session, run_result
+
+    url_after_pick, recorded_session, run_result = asyncio.run(
+        pick_rows_and_next_button_then_replay()
+    )
+
+    assert url_after_pick == f"{fixture_site_url}/shop?page=1"
+    assert recorded_session["table"]["pagination"] == {
+        "mode": "nextButton",
+        "selector": "a.next",
+        "fallbackSelectors": ["html > body:nth-of-type(1) > a:nth-of-type(1)"],
+        "maxPages": 10,
+    }
+    assert without_timestamps(recorded_session["actions"]) == [
+        {"type": "navigate", "url": f"{fixture_site_url}/shop?page=1"}
+    ]
+    assert [record["name"] for record in run_result["data"]] == ["Shoe", "Hat", "Boot", "Cap"]
+
+
+@pytest.mark.parametrize("pick_rows", [True, False], ids=["with-rows", "without-rows"])
+def test_infinite_scroll_goes_into_the_row_table_only(pick_rows, fixture_site_url):
+    async def choose_infinite_scroll():
+        async with started_recorder("chromium", f"{fixture_site_url}/tags") as recorder:
+            if pick_rows:
+                page = recorder.active_page
+                await recorder.activate_row_picker()
+                await page.locator("li").nth(0).click()
+                await page.locator("li").nth(1).click()
+                await wait_until(lambda: recorder.row_table is not None)
+            recorder.use_infinite_scroll()
+            return await recorder.stop()
+
+    recorded_session = asyncio.run(choose_infinite_scroll())
+
+    if pick_rows:
+        assert recorded_session["table"]["pagination"] == {
+            "mode": "infiniteScroll",
+            "maxScrolls": 10,
+        }
+    else:
+        assert recorded_session["table"] is None
