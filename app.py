@@ -111,6 +111,42 @@ def activate_row_picker():
     })
 
 
+@app.route('/api/sessions/next-button', methods=['POST'])
+def activate_next_button_picker():
+    """Activate next page button selector mode."""
+    global current_recorder
+
+    if not current_recorder:
+        return jsonify({"error": "No active recording"}), 400
+    if current_recorder.row_table is None:
+        return jsonify({"error": "Select rows first"}), 400
+
+    browser_worker.submit(current_recorder.activate_next_button_picker()).result()
+
+    return jsonify({
+        "success": True,
+        "message": "Next button selector mode activated"
+    })
+
+
+@app.route('/api/sessions/infinite-scroll', methods=['POST'])
+def use_infinite_scroll():
+    """Make the row table load more rows by scrolling."""
+    global current_recorder
+
+    if not current_recorder:
+        return jsonify({"error": "No active recording"}), 400
+    if current_recorder.row_table is None:
+        return jsonify({"error": "Select rows first"}), 400
+
+    current_recorder.use_infinite_scroll()
+
+    return jsonify({
+        "success": True,
+        "message": "Infinite scroll enabled"
+    })
+
+
 @app.route('/api/sessions/stop', methods=['POST'])
 def stop_session():
     """Stop recording and save session."""
