@@ -1,12 +1,20 @@
 """
-Serves in-memory HTML pages over local HTTP so browser tests never need the internet.
+Gives browser tests local HTTP addresses to load, so they never need the internet.
 Must not hold any test's pages; each test module passes its own.
 """
 
 import contextlib
 import http.server
+import socket
 import threading
 from collections.abc import Iterator
+
+
+def find_closed_local_port() -> int:
+    """Returns a port nothing listens on. Chromium refuses some low ports outright, so 1 won't do."""
+    with socket.socket() as probe_socket:
+        probe_socket.bind(("127.0.0.1", 0))
+        return probe_socket.getsockname()[1]
 
 
 @contextlib.contextmanager
