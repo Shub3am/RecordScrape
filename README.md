@@ -8,10 +8,11 @@ A powerful visual browser automation platform for recording interactions and aut
 - 🎯 **Element Selection**: Visually select DOM elements for data extraction
 - 🔄 **Automated Replay**: Repeat the recorded clicks, typing and scrolling, visible or headless, then re-extract the selected elements
 - 📄 **Flow Files**: Export a session as a JSON file, edit or share it, and import it back
+- 💾 **Data Export**: Download any run's extracted data as CSV, JSON or JSONL
 - ⏰ **Scheduling**: Run a session every N minutes
 - 📊 **Dashboard**: Web interface for managing sessions, schedules and extracted data
 
-> JSON/CSV export of extracted data is not implemented yet. It is on the roadmap. Sessions recorded before the Playwright recorder only reopen their URL.
+> Sessions recorded before the Playwright recorder only reopen their URL.
 
 ## 🎥 Demo
 
@@ -112,6 +113,9 @@ The last choice wins. Elements picked with **"Select Elements"** are read on the
 1. Find your session in the **"Saved Sessions"** section
 2. Click **"Replay"** to run it once manually
 3. Extracted data appears in **"Recent Data Extractions"**
+4. Click **"JSON"**, **"CSV"** or **"JSONL"** on a run to download its data
+
+A CSV has one column per field and one line per row or picked value. Values are written exactly as scraped, so a spreadsheet runs a value that starts with `=`, `+`, `-` or `@` as a formula; open files from untrusted sites as text.
 
 ### Exporting and Importing Flows
 
