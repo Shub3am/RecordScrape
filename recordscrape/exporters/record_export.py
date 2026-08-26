@@ -32,12 +32,12 @@ def records_as_jsonl(records: list[dict]) -> str:
 @dataclass(frozen=True)
 class ExportFormat:
     write_records: Callable[[list[dict]], str]
-    file_extension: str
     mimetype: str
 
 
+# Each format's name is also its file extension.
 EXPORT_FORMATS = {
-    "csv": ExportFormat(records_as_csv, "csv", "text/csv"),
-    "json": ExportFormat(records_as_json, "json", "application/json"),
-    "jsonl": ExportFormat(records_as_jsonl, "jsonl", "application/jsonl"),
+    "csv": ExportFormat(records_as_csv, "text/csv"),
+    "json": ExportFormat(records_as_json, "application/json"),
+    "jsonl": ExportFormat(records_as_jsonl, "application/jsonl"),
 }
