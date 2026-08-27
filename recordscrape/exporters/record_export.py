@@ -7,8 +7,26 @@ Must not know about storage, Flask or browsers.
 import csv
 import io
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
+
+# Spreadsheets run a cell starting with one of these as a formula, and scraped text comes from
+# pages anyone can write. A leading apostrophe makes Excel, LibreOffice and Google Sheets show the
+# cell as text (OWASP CSV injection guidance).
+FORMULA_TRIGGER_CHARACTERS = ("=", "+", "-", "@", "\t", "\r")
+# Not float(): it also accepts "-inf", "nan" and "1_0", which spreadsheets do not read as numbers.
+SIGNED_NUMBER = re.compile(r"[+-](\d+\.?\d*|\.\d+)([eE][+-]?\d+)?")
+
+
+def spreadsheet_safe_cell(cell_value):
+    """Returns the value with an apostrophe in front when a spreadsheet would run it as a formula.
+    A plain number such as -5 is left as is, because spreadsheets read it as a number."""
+    if not isinstance(cell_value, str) or not cell_value.startswith(FORMULA_TRIGGER_CHARACTERS):
+        return cell_value
+    if SIGNED_NUMBER.fullmatch(cell_value):
+        return cell_value
+    return "'" + cell_value
 
 
 def records_as_csv(records: list[dict]) -> str:
@@ -16,8 +34,10 @@ def records_as_csv(records: list[dict]) -> str:
     column_names = list(dict.fromkeys(key for record in records for key in record))
     csv_text = io.StringIO()
     csv_writer = csv.DictWriter(csv_text, fieldnames=column_names, restval="")
-    csv_writer.writeheader()
-    csv_writer.writerows(records)
+    csv_writer.writerow({name: spreadsheet_safe_cell(name) for name in column_names})
+    csv_writer.writerows(
+        {key: spreadsheet_safe_cell(value) for key, value in record.items()} for record in records
+    )
     return csv_text.getvalue()
 
 
