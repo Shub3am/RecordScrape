@@ -14,7 +14,9 @@ from recordscrape.browsers.browser_config import BrowserConfig
 @asynccontextmanager
 async def open_chromium_context(browser_config: BrowserConfig) -> AsyncIterator[BrowserContext]:
     async with async_playwright() as playwright_driver:
-        browser = await playwright_driver.chromium.launch(headless=browser_config.headless)
+        browser = await playwright_driver.chromium.launch(
+            headless=browser_config.headless, proxy=browser_config.launch_proxy_settings()
+        )
         try:
             yield await browser.new_context()
         finally:
