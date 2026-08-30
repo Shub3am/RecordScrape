@@ -17,7 +17,7 @@ Storage, Flask, the scheduler, the worker thread, the recorder's page scripts or
 - The result has the same shape as vpr's `SessionReplayer`: `{"success", "url", "data", "timestamp", "items_count"}`, or `{"success": False, "error", "timestamp"}`. The scheduler and the dashboard read these keys.
 - Only Playwright and Patchright errors become `success: False`. Any other exception is a bug and raises.
 - Recorded actions are not replayed yet, exactly as vpr. Pages that need a click or a login before the data shows extract nothing.
-- Each picked element waits up to `PICKED_ELEMENT_WAIT_MS` for any of its selectors to attach, then reads the first selector in order that matches. A missing element costs the full wait and yields no rows.
+- Each picked element waits up to `PICKED_ELEMENT_WAIT_MS` for any of its selectors to attach, then reads the first selector in order that matches. Elements are read concurrently, so any number of missing elements cost one full wait together and yield no rows.
 - Every row carries the element's primary `selector`, even when a fallback matched, because the dashboard labels rows by it.
 - Values follow Selenium's reads so vpr sessions extract the same data: `textContent` is `innerText`, and other attributes read the DOM property first, so `href` and `src` are absolute URLs. Empty values are dropped.
 - `fallbackSelectors` is optional because sessions recorded under vpr lack it.
