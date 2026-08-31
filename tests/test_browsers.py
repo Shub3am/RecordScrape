@@ -6,6 +6,7 @@ reach exposed bindings on every document, and leaving the context closes the bro
 
 import asyncio
 import logging
+import sys
 
 import pytest
 
@@ -17,6 +18,7 @@ from recordscrape.browsers import (
 )
 from tests.fixture_proxy import serve_authenticating_proxy
 from tests.fixture_site import find_closed_local_port, serve_fixture_pages
+from tests.installed_backends import ALL_BACKENDS, RECORDING_BACKENDS
 
 FIXTURE_PAGES = {
     "/first": '<title>First</title><a id="to-second" href="/second">second</a>',
@@ -34,8 +36,6 @@ REPORT_DOCUMENT_SCRIPT = f"""
   }}
 }})();
 """
-
-ALL_BACKENDS = ["chromium", "patchright"]
 
 
 @pytest.fixture(scope="module")
@@ -55,7 +55,7 @@ def test_context_loads_a_page(backend, fixture_site_url):
     assert asyncio.run(read_first_page_title()) == "First"
 
 
-@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize("backend", RECORDING_BACKENDS)
 def test_page_scripts_reach_exposed_bindings_on_every_document(backend, fixture_site_url, caplog):
     async def collect_reported_documents():
         reported_paths = []
@@ -126,3 +126,34 @@ def test_pages_load_through_an_authenticating_proxy(backend, fixture_site_url, m
 
     assert page_title == "First"
     assert "http://shop.test/first" in proxy.authenticated_urls
+
+
+def test_human_like_input_is_refused_on_backends_without_it():
+    with pytest.raises(ValueError, match="Human-like input needs one of these backends"):
+        BrowserConfig(backend="patchright", humanize=True)
+
+
+def test_cloakbrowser_without_its_extra_says_how_to_install_it(monkeypatch):
+    monkeypatch.setitem(sys.modules, "cloakbrowser", None)
+
+    async def open_cloakbrowser():
+        async with open_browser_context(BrowserConfig(backend="cloakbrowser")):
+            pass
+
+    with pytest.raises(ValueError, match="uv sync --extra cloakbrowser"):
+        asyncio.run(open_cloakbrowser())
+
+
+def test_cloakbrowser_clicks_with_human_like_input(fixture_site_url):
+    pytest.importorskip("cloakbrowser")
+
+    async def follow_link_with_humanize():
+        browser_config = BrowserConfig(backend="cloakbrowser", humanize=True)
+        async with open_browser_context(browser_config) as browser_context:
+            page = await browser_context.new_page()
+            await page.goto(f"{fixture_site_url}/first")
+            await page.click("#to-second")
+            await page.wait_for_url("**/second")
+            return await page.title()
+
+    assert asyncio.run(follow_link_with_humanize()) == "Second"
