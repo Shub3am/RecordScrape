@@ -8,7 +8,7 @@ stop() returns.
 import time
 from contextlib import AsyncExitStack
 
-from recordscrape.browsers import BrowserConfig, open_browser_context
+from recordscrape.browsers import BACKENDS_WITHOUT_BINDINGS, BrowserConfig, open_browser_context
 from recordscrape.recorder.recorder_script import (
     ACTIVATE_NEXT_BUTTON_PICKER_SCRIPT,
     ACTIVATE_PICKER_SCRIPT,
@@ -23,6 +23,11 @@ DEFAULT_MAX_SCROLLS = 10
 
 class SessionRecorder:
     def __init__(self, browser_config: BrowserConfig):
+        if browser_config.backend in BACKENDS_WITHOUT_BINDINGS:
+            raise ValueError(
+                f"The {browser_config.backend} backend cannot record, because the page script "
+                "reports through an exposed binding that it disables. Record with another backend."
+            )
         self.browser_config = browser_config
         self.start_url = ""
         self.recorded_actions: list[dict] = []

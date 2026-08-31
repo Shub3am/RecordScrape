@@ -211,6 +211,11 @@ def test_failed_start_closes_the_browser(backend):
     assert not asyncio.run(start_on_unreachable_url()).is_connected()
 
 
+def test_a_backend_without_bindings_is_refused_before_any_browser_opens():
+    with pytest.raises(ValueError, match="cloakbrowser backend cannot record"):
+        SessionRecorder(BrowserConfig(backend="cloakbrowser"))
+
+
 def build_selectors_on_page(page_body, target_selector, build_selectors_call):
     """Runs selector_builder.js on the target element; `build_selectors_call` sees it as `element`."""
     selector_builder_script = read_page_script("selector_builder.js")
