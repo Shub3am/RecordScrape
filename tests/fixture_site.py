@@ -18,6 +18,20 @@ def find_closed_local_port() -> int:
 
 
 @contextlib.contextmanager
+def serve_handler_on_local_port(
+    request_handler_class: type[http.server.BaseHTTPRequestHandler],
+) -> Iterator[str]:
+    """Yields the base URL of a server running the handler on a free loopback port."""
+    local_server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), request_handler_class)
+    threading.Thread(target=local_server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{local_server.server_address[1]}"
+    finally:
+        local_server.shutdown()
+        local_server.server_close()
+
+
+@contextlib.contextmanager
 def serve_fixture_pages(fixture_pages: dict[str, str]) -> Iterator[str]:
     """Yields the site's base URL. Each key is a path and each value is the HTML inside <html>."""
 
@@ -34,10 +48,5 @@ def serve_fixture_pages(fixture_pages: dict[str, str]) -> Iterator[str]:
             self.end_headers()
             self.wfile.write(f"<!doctype html><html>{fixture_pages[self.path]}</html>".encode())
 
-    fixture_server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FixturePageHandler)
-    threading.Thread(target=fixture_server.serve_forever, daemon=True).start()
-    try:
-        yield f"http://127.0.0.1:{fixture_server.server_address[1]}"
-    finally:
-        fixture_server.shutdown()
-        fixture_server.server_close()
+    with serve_handler_on_local_port(FixturePageHandler) as fixture_site_url:
+        yield fixture_site_url
