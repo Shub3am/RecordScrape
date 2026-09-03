@@ -1,4 +1,5 @@
 from recordscrape.flows.flow_file import (
+    BrowserSettings,
     FlowFile,
     flow_file_json,
     flow_from_recorded_session,
@@ -7,6 +8,7 @@ from recordscrape.flows.flow_file import (
 )
 
 __all__ = [
+    "BrowserSettings",
     "FlowFile",
     "flow_file_json",
     "flow_from_recorded_session",

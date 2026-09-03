@@ -1,12 +1,14 @@
 """
 The flow file: the versioned JSON form of a recorded session that people export, edit, share and
 import, and its conversion to and from the recorded-session dict that storage and the runner use.
-Must not know about storage, Flask, browsers or the worker.
+Must not know about storage, Flask or the worker, and must not launch a browser.
 """
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from recordscrape.browsers.browser_config import BackendName, BrowserConfig
 
 FLOW_FORMAT_VERSION = 1
 
@@ -84,6 +86,18 @@ class RowTable(FlowFileModel):
         return columns
 
 
+class BrowserSettings(FlowFileModel):
+    backend: BackendName
+    # Stored as typed. ${ENV} references keep a secret out of the file; they expand at launch.
+    proxy: str | None = None
+    humanize: bool = False
+
+    @model_validator(mode="after")
+    def refuse_settings_the_backend_cannot_launch(self) -> "BrowserSettings":
+        BrowserConfig(**self.model_dump())
+        return self
+
+
 class FlowFile(FlowFileModel):
     formatVersion: Literal[FLOW_FORMAT_VERSION]
     name: str
@@ -91,6 +105,7 @@ class FlowFile(FlowFileModel):
     steps: list[Annotated[ClickStep | InputStep | ScrollStep, Field(discriminator="type")]]
     pickedElements: list[PickedElement]
     table: RowTable | None = None
+    browser: BrowserSettings | None = None
 
 
 def recorded_by_vpr(recorded_steps: list[dict]) -> bool:
@@ -106,7 +121,7 @@ def recorded_by_vpr(recorded_steps: list[dict]) -> bool:
 def flow_from_recorded_session(flow_name: str, recorded_session: dict) -> FlowFile:
     """Keeps what replay reads. Drops timestamps, the picker's display fields, the start URL's
     navigate step (startUrl holds it) and every step of a vpr session. A session without a row table
-    exports without the `table` key, so readers from before row tables still load it."""
+    or browser settings exports without that key, so readers from before it still load the file."""
     recorded_steps = recorded_session["actions"]
     replayable_steps = (
         []
@@ -131,6 +146,7 @@ def flow_from_recorded_session(flow_name: str, recorded_session: dict) -> FlowFi
             for picked_element in recorded_session["selectors"]
         ],
         **({} if recorded_session["table"] is None else {"table": recorded_session["table"]}),
+        **({} if recorded_session["browser"] is None else {"browser": recorded_session["browser"]}),
     )
 
 
@@ -140,10 +156,12 @@ def flow_file_json(flow: FlowFile) -> str:
 
 
 def recorded_session_from_flow(flow: FlowFile) -> dict:
-    """Returns the {url, actions, selectors, table} dict that storage saves and the runner replays."""
+    """Returns the {url, actions, selectors, table, browser} dict that storage saves and the runner
+    replays."""
     return {
         "url": flow.startUrl,
         "actions": [step.model_dump(exclude_unset=True) for step in flow.steps],
         "selectors": [picked_element.model_dump() for picked_element in flow.pickedElements],
         "table": None if flow.table is None else flow.table.model_dump(exclude_unset=True),
+        "browser": None if flow.browser is None else flow.browser.model_dump(),
     }

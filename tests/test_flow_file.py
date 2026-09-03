@@ -29,6 +29,12 @@ CARD_TABLE = {
     ],
 }
 
+PROXIED_PATCHRIGHT = {
+    "backend": "patchright",
+    "proxy": "http://${PROXY_USER}:${PROXY_PASS}@proxy.example:8080",
+    "humanize": False,
+}
+
 
 def recorded_search_session(search_url):
     """Shaped like SessionRecorder.stop() output, timestamps and picker display fields included."""
@@ -64,6 +70,7 @@ def recorded_search_session(search_url):
             }
         ],
         "table": CARD_TABLE,
+        "browser": PROXIED_PATCHRIGHT,
     }
 
 
@@ -106,6 +113,7 @@ def test_exported_session_imports_back_without_display_fields():
             {"selector": "#summary", "fallbackSelectors": ["p"], "attribute": "textContent"}
         ],
         "table": CARD_TABLE,
+        "browser": PROXIED_PATCHRIGHT,
     }
     assert "checked" not in json.loads(flow_text)["steps"][0]
 
@@ -119,6 +127,7 @@ def test_vpr_session_exports_only_its_start_url_and_picked_elements():
         ],
         "selectors": [{"selector": "h1", "tagName": "H1", "attribute": "textContent"}],
         "table": None,
+        "browser": None,
     }
 
     flow = flow_from_recorded_session("Old", vpr_session)
@@ -126,6 +135,7 @@ def test_vpr_session_exports_only_its_start_url_and_picked_elements():
     assert flow.steps == []
     assert flow.pickedElements[0].fallbackSelectors == []
     assert "table" not in json.loads(flow_file_json(flow))
+    assert "browser" not in json.loads(flow_file_json(flow))
 
 
 @pytest.mark.parametrize(
@@ -165,6 +175,17 @@ def test_flow_without_a_table_imports_as_a_session_without_one():
     imported_session = recorded_session_from_flow(FlowFile.model_validate(valid_flow_file()))
 
     assert imported_session["table"] is None
+    assert imported_session["browser"] is None
+
+
+def test_browser_settings_left_out_of_a_file_take_their_defaults():
+    flow = FlowFile.model_validate({**valid_flow_file(), "browser": {"backend": "cloakbrowser"}})
+
+    assert recorded_session_from_flow(flow)["browser"] == {
+        "backend": "cloakbrowser",
+        "proxy": None,
+        "humanize": False,
+    }
 
 
 @pytest.mark.parametrize(
@@ -192,6 +213,9 @@ def test_flow_without_a_table_imports_as_a_session_without_one():
             },
         ),
         ("table", {**CARD_TABLE, "pagination": {"mode": "pageNumbers", "maxPages": 3}}),
+        ("browser", {"backend": "firefox"}),
+        ("browser", {"backend": "chromium", "humanize": True}),
+        ("browser", {"backend": "chromium", "headless": True}),
     ],
     ids=[
         "newer-version",
@@ -205,6 +229,9 @@ def test_flow_without_a_table_imports_as_a_session_without_one():
         "zero-scrolls",
         "zero-pages",
         "unknown-pagination-mode",
+        "unknown-backend",
+        "humanize-without-native-support",
+        "headless-is-a-run-choice",
     ],
 )
 def test_malformed_flow_file_is_refused(broken_key, broken_value):
