@@ -8,8 +8,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from recordscrape.browsers import BackendName, BrowserConfig
+from recordscrape.runner import run_session
+from recordscrape.worker import BrowserWorker
 from vpr.storage import StorageManager
-from vpr.replayer import SessionReplayer
 
 
 # Configure logging
@@ -20,9 +22,12 @@ logger = logging.getLogger(__name__)
 class ScraperScheduler:
     """Manages scheduled scraping jobs."""
     
-    def __init__(self, storage: StorageManager):
+    def __init__(self, storage: StorageManager, browser_worker: BrowserWorker,
+                 browser_backend: BackendName):
         """Initialize the scheduler."""
         self.storage = storage
+        self.browser_worker = browser_worker
+        self.browser_backend = browser_backend
         self.scheduler = BackgroundScheduler()
         self.scheduler.start()
         self.jobs = {}  # Map schedule_id to job_id
@@ -146,9 +151,7 @@ class ScraperScheduler:
                 logger.error(f"Session {session_id} not found")
                 return
             
-            # Replay session
-            replayer = SessionReplayer(headless=True)
-            result = replayer.replay_session(session)
+            result = self.run_on_worker(session, headless=True)
             
             # Save extracted data
             if result.get("success"):
@@ -187,9 +190,7 @@ class ScraperScheduler:
             if not session:
                 return {"success": False, "error": "Session not found"}
             
-            # Replay session with user-specified headless mode
-            replayer = SessionReplayer(headless=headless)
-            result = replayer.replay_session(session)
+            result = self.run_on_worker(session, headless=headless)
             
             # Save extracted data
             if result.get("success"):
@@ -207,6 +208,11 @@ class ScraperScheduler:
             logger.error(f"Error in manual scrape: {e}")
             return {"success": False, "error": str(e)}
     
+    def run_on_worker(self, session: dict, headless: bool) -> dict:
+        """Runs a session on the browser worker and blocks this thread until its result is ready."""
+        browser_config = BrowserConfig(backend=self.browser_backend, headless=headless)
+        return self.browser_worker.submit(run_session(browser_config, session)).result()
+
     def get_job_status(self, schedule_id: int) -> Optional[dict]:
         """Get status of a scheduled job."""
         try:

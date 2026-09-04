@@ -23,4 +23,4 @@ Playwright, backends, flows, storage, Flask or the scheduler. It runs coroutines
 
 ## Who calls it
 
-Nothing yet. The browser backends, recorder and runner will submit through it, and `app.py` and the scheduler will own the single instance.
+`app.py` builds the single instance, runs the recorder on it from request threads, and hands it to `vpr/scheduler.py`, which runs sessions on it from APScheduler threads. Both block their own thread on `.result()`, never the worker.

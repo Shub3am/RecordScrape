@@ -24,4 +24,4 @@ Storage, Flask, the scheduler, the worker thread, the recorder's page scripts or
 
 ## Who calls it
 
-Nothing yet. `app.py` and the scheduler will call it through the worker once the Selenium replayer in `vpr/` is removed.
+`vpr/scheduler.py`, through the worker, for both scheduled runs (always headless) and the dashboard's manual replay (visible unless the user ticks headless).

@@ -30,4 +30,4 @@ Storage, Flask, the scheduler, the worker thread or which backend is in use. Cal
 
 ## Who calls it
 
-Nothing yet. `app.py` will drive it through the worker once the Selenium recorder in `vpr/` is removed.
+`app.py`, through the worker: one recorder at a time, opened visible, from the start, selector and stop routes.
