@@ -20,7 +20,9 @@ A powerful visual browser automation platform for recording interactions and aut
 
 One recording on [quotes.toscrape.com](https://quotes.toscrape.com/), a site built for scraping practice: two clicks pick the quotes as rows, one more adds the author column, and the Next button makes every run read all 10 pages, 100 records.
 
-▶ Full video:  
+▶ [Full walkthrough video (70 s)](docs/images/demo.mp4): record, pick rows and the Next button, save, replay headless, schedule and download the CSV.
+
+▶ Earlier video:  
 https://twitter.com/Shubh3m/status/2027349108256887131
 
 Record once → Automate forever.
@@ -227,7 +229,7 @@ RecordScrape/
 ├── templates/
 │   └── index.html         # Dashboard HTML
 ├── tests/                 # pytest suite
-├── docs/images/           # README screenshots and demo GIF
+├── docs/images/           # README screenshots, demo GIF and video
 ├── pyproject.toml         # Project metadata and dependencies
 ├── uv.lock                # Pinned dependency versions
 └── LICENSE
