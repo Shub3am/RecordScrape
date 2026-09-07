@@ -25,7 +25,8 @@ class ScraperScheduler:
     
     def __init__(self, storage: StorageManager, browser_worker: BrowserWorker,
                  browser_config: BrowserConfig):
-        """Initialize the scheduler. Each run uses browser_config with its own headless choice."""
+        """Initialize the scheduler. Each run uses browser_config with its own headless choice,
+        and with the session's browser settings in place of its backend, proxy and humanize."""
         self.storage = storage
         self.browser_worker = browser_worker
         self.browser_config = browser_config
@@ -211,7 +212,9 @@ class ScraperScheduler:
     
     def _run_on_worker(self, session: dict, headless: bool) -> dict:
         """Runs a session on the browser worker and blocks this thread until its result is ready."""
-        run_browser_config = dataclasses.replace(self.browser_config, headless=headless)
+        run_browser_config = dataclasses.replace(
+            self.browser_config, headless=headless, **(session["browser"] or {})
+        )
         return self.browser_worker.submit(run_session(run_browser_config, session)).result()
 
     def get_job_status(self, schedule_id: int) -> Optional[dict]:
