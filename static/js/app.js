@@ -22,6 +22,7 @@ function initializeApp() {
 function setupEventListeners() {
     // Recording controls
     document.getElementById('start-recording-btn').addEventListener('click', startRecording);
+    document.getElementById('backend-select').addEventListener('change', allowHumanizeOnCloakBrowserOnly);
     document.getElementById('activate-selector-btn').addEventListener('click', () =>
         activatePicker('selector', 'Element selector', 'Click elements in the browser.'));
     document.getElementById('activate-row-picker-btn').addEventListener('click', () =>
@@ -92,6 +93,22 @@ function updateRecordingUI() {
 
 // ==================== RECORDING CONTROLS ====================
 
+function allowHumanizeOnCloakBrowserOnly() {
+    const humanizeCheckbox = document.getElementById('humanize-checkbox');
+    humanizeCheckbox.disabled = document.getElementById('backend-select').value !== 'cloakbrowser';
+    if (humanizeCheckbox.disabled) {
+        humanizeCheckbox.checked = false;
+    }
+}
+
+function chosenBrowserSettings() {
+    return {
+        backend: document.getElementById('backend-select').value,
+        proxy: document.getElementById('proxy-input').value.trim() || null,
+        humanize: document.getElementById('humanize-checkbox').checked
+    };
+}
+
 async function startRecording() {
     const urlInput = document.getElementById('url-input');
     let url = urlInput.value.trim();
@@ -119,7 +136,7 @@ async function startRecording() {
         const response = await fetch(`${API_BASE}/sessions/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url })
+            body: JSON.stringify({ url, browser: chosenBrowserSettings() })
         });
 
         const result = await response.json();
@@ -195,6 +212,21 @@ async function loadSessions() {
     }
 }
 
+// Names the proxy's presence only: its URL can hold a password typed literally.
+function describeBrowserSettings(browserSettings) {
+    if (!browserSettings) {
+        return 'chromium';
+    }
+    const settingLabels = [escapeHtml(browserSettings.backend)];
+    if (browserSettings.proxy) {
+        settingLabels.push('proxy');
+    }
+    if (browserSettings.humanize) {
+        settingLabels.push('humanize');
+    }
+    return settingLabels.join(' + ');
+}
+
 function renderSessions(sessions) {
     const container = document.getElementById('sessions-grid');
 
@@ -216,6 +248,7 @@ function renderSessions(sessions) {
                 <div class="card-meta">
                     <span>📅 ${formatDate(session.created_at)}</span>
                     <span>▶️ ${session.run_count} runs</span>
+                    <span>🌐 ${describeBrowserSettings(session.browser)}</span>
                 </div>
                 <a href="${escapeHtml(session.url)}" target="_blank" class="card-url">${escapeHtml(session.url)}</a>
             </div>

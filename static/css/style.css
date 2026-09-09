@@ -301,7 +301,13 @@ body {
     color: var(--text-secondary);
 }
 
-.input-group input {
+.input-group-narrow {
+    flex: 0 1 280px;
+    min-width: 220px;
+}
+
+.input-group input,
+.input-group select {
     width: 100%;
     padding: 12px 16px;
     background: var(--bg-dark);
@@ -312,7 +318,18 @@ body {
     transition: border-color 0.3s ease;
 }
 
-.input-group input:focus {
+.humanize-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    align-self: flex-end;
+    padding-bottom: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.input-group input:focus,
+.input-group select:focus {
     outline: none;
     border-color: var(--primary);
 }

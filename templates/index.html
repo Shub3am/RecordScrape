@@ -37,6 +37,22 @@
                     <label for="url-input">Target URL</label>
                     <input type="url" id="url-input" placeholder="https://example.com" autocomplete="url">
                 </div>
+                <div class="input-group input-group-narrow">
+                    <label for="backend-select">Browser</label>
+                    <select id="backend-select">
+                        <option value="chromium">Chromium</option>
+                        <option value="patchright">Patchright (stealth)</option>
+                        <option value="cloakbrowser">CloakBrowser (stealth, records on Patchright)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="proxy-input">Proxy (optional)</label>
+                    <input type="text" id="proxy-input" placeholder="http://${PROXY_USER}:${PROXY_PASS}@host:8080" autocomplete="off" spellcheck="false">
+                </div>
+                <label class="humanize-toggle">
+                    <input type="checkbox" id="humanize-checkbox" disabled>
+                    <span>Human-like input (CloakBrowser only)</span>
+                </label>
             </div>
 
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">

@@ -86,7 +86,7 @@ uv run pytest
 ### Recording a Session
 
 1. In **"Record New Session"**, enter the URL you want to scrape and click **"Start Recording"**
-2. A Chromium window opens on that URL
+2. A browser window opens on that URL (see [Stealth Browsers and Proxies](#stealth-browsers-and-proxies) to pick which one)
 3. Click **"Select Elements"** and click the elements you want to extract, then **"Done"** in the overlay
 4. For a list of items, click **"Select Rows"** instead (see below)
 5. Click **"Stop & Save"** to save the session
@@ -123,7 +123,25 @@ A CSV has one column per field and one line per row or picked value. A value tha
 2. Edit it by hand if you want: fix a selector, change a typed value, remove a step
 3. Click **"Import Flow"** above the saved sessions and pick the file to save it as a new session
 
-A flow file holds the start URL, the recorded steps (`click`, `input`, `scroll`), the picked elements and, if one was picked, the row `table`. Unknown keys and files from a newer format version are refused with an error instead of being half loaded.
+A flow file holds the start URL, the recorded steps (`click`, `input`, `scroll`), the picked elements and, if set, the row `table` and the `browser` settings. Unknown keys and files from a newer format version are refused with an error instead of being half loaded.
+
+### Stealth Browsers and Proxies
+
+Next to the URL box, pick the browser a session records and runs on, and an optional proxy:
+
+| Browser | What it is | Install |
+|---------|------------|---------|
+| Chromium | Stock Playwright Chromium, the default | `uv run playwright install chromium` |
+| Patchright | Playwright fork that hides common automation leaks | `uv run patchright install chromium` |
+| CloakBrowser | Patched Chromium binary with its own fingerprint patches and optional human-like input | `uv sync --extra cloakbrowser`, then `uv run python -m cloakbrowser install` (about 200MB) |
+
+- **CloakBrowser records on Patchright.** It disables the page binding the recorder reports through, so a CloakBrowser session is recorded on Patchright with the same proxy, and every run uses CloakBrowser. Newer CloakBrowser builds read a license key from `CLOAKBROWSER_LICENSE_KEY`.
+- **Human-like input** (mouse paths, typing cadence) is CloakBrowser's own and can only be ticked for it.
+- **Proxy URL:** `http://host:8080`, `https://host:8443` or `socks5://host:1080`. Keep credentials out of the database by referencing environment variables, `http://${PROXY_USER}:${PROXY_PASS}@host:8080`; they are read each time a browser opens, so set them before starting the server.
+- **SOCKS5 with credentials is refused.** Playwright cannot authenticate to a SOCKS5 proxy, and CloakBrowser falls back to a direct connection when that fails. Use an HTTP proxy for authenticated access.
+- **The proxy URL is stored exactly as typed**, and exported that way in flow files. A password typed literally ends up in the database and in every exported flow; `${ENV}` references stay references. The dashboard only shows whether a session has a proxy, never the URL.
+
+The browser settings belong to the session: recording, manual replays and scheduled runs all use them.
 
 ### Scheduling Periodic Scraping
 
