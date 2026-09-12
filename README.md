@@ -36,8 +36,8 @@ Record once → Automate forever.
      │                                             │
      ▼                                             ▼
 ┌─────────────────┐                    ┌──────────────────┐
-│   Recorder      │                    │    Replayer      │
-│  (Selenium UI)  │                    │  (Headless)      │
+│   Recorder      │                    │     Runner       │
+│  (Playwright)   │                    │  (Playwright)    │
 └────┬────────────┘                    └────┬─────────────┘
      │                                      │
      ▼                                      ▼
@@ -49,7 +49,7 @@ Record once → Automate forever.
 
 ## Installation
 
-Requires Python 3.11+, [uv](https://docs.astral.sh/uv/) and Google Chrome.
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 1. Clone the repository:
 ```bash
@@ -57,9 +57,10 @@ git clone https://github.com/Shub3am/RecordScrape.git
 cd RecordScrape
 ```
 
-2. Install dependencies:
+2. Install dependencies and the browser:
 ```bash
 uv sync
+uv run playwright install chromium
 ```
 
 3. Run the application:
@@ -71,7 +72,10 @@ uv run python app.py
 
 ## Running tests
 
+The tests also run on the Patchright backend, which needs its own browser:
+
 ```bash
+uv run patchright install chromium
 uv run pytest
 ```
 
@@ -80,8 +84,8 @@ uv run pytest
 ### Recording a Session
 
 1. In **"Record New Session"**, enter the URL you want to scrape and click **"Start Recording"**
-2. A Chrome window opens on that URL
-3. Click **"Select Elements"** and click the elements you want to extract, then **"Done Selecting"** in the overlay
+2. A Chromium window opens on that URL
+3. Click **"Select Elements"** and click the elements you want to extract, then **"Done"** in the overlay
 4. Click **"Stop & Save"** to save the session
 
 ### Replaying & Extracting Data
@@ -102,10 +106,13 @@ uv run pytest
 ```
 RecordScrape/
 ├── app.py                 # Flask application & API
-├── vpr/                   # Visual Page Recorder package
+├── recordscrape/          # Playwright engine
+│   ├── worker/            # The one thread all browser work runs on
+│   ├── browsers/          # Chromium and Patchright backends
+│   ├── recorder/          # Session recording and element picking
+│   └── runner/            # Re-extracts picked elements
+├── vpr/                   # Storage and scheduling
 │   ├── __init__.py
-│   ├── recorder.py        # Session recording engine
-│   ├── replayer.py        # Headless replay engine
 │   ├── storage.py         # Database management
 │   └── scheduler.py       # Background job scheduler
 ├── static/
@@ -123,11 +130,11 @@ RecordScrape/
 
 ## Technologies
 
-- **Backend**: Python, Flask, Selenium WebDriver
+- **Backend**: Python, Flask
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Database**: SQLite
 - **Scheduling**: APScheduler
-- **Browser Automation**: Selenium + WebDriver Manager
+- **Browser Automation**: Playwright, with Patchright as a stealth backend
 
 ## License
 

@@ -5,7 +5,7 @@ Self-hosted tool: record a browser session in a web dashboard, pick elements, re
 ## Modules
 
 - `app.py`: Flask server and REST API for the dashboard. Single file, no module doc.
-- `vpr/`: recording, replay, scheduling and SQLite storage engine. See `vpr/CLAUDE.md`.
+- `vpr/`: interval scheduling and SQLite storage for recorded sessions. See `vpr/CLAUDE.md`.
 - `recordscrape/worker/`: the one thread and event loop that all browser work runs on. See `recordscrape/worker/CLAUDE.md`.
 - `recordscrape/browsers/`: opens a browser context for the chromium or patchright backend. See `recordscrape/browsers/CLAUDE.md`.
 - `recordscrape/recorder/`: records a browsing session as steps with fallback selectors. See `recordscrape/recorder/CLAUDE.md`.
