@@ -26,6 +26,8 @@ def fixture_site_url():
 @pytest.fixture
 def app_module(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    monkeypatch.setenv("RECORDSCRAPE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.delitem(sys.modules, "app", raising=False)
     fresh_app_module = importlib.import_module("app")
     # Recording opens a visible window by design; tests have no screen to show it on.
@@ -57,6 +59,43 @@ def test_api_does_not_grant_cross_origin_access(app_module):
     response = client.get("/api/status", headers={"Origin": "https://evil.example"})
 
     assert "Access-Control-Allow-Origin" not in response.headers
+
+
+def test_api_on_the_loopback_default_needs_no_token(app_module):
+    client = app_module.app.test_client()
+
+    assert client.get("/api/status").status_code == 200
+
+
+@pytest.mark.parametrize(
+    "authorization_headers",
+    [{}, {"Authorization": "Bearer wrong-token"}],
+    ids=["no-token", "wrong-token"],
+)
+def test_api_with_a_token_refuses_requests_without_it(app_module, authorization_headers):
+    app_module.SERVER_SETTINGS = dataclasses.replace(app_module.SERVER_SETTINGS, api_token="s3cret")
+    client = app_module.app.test_client()
+
+    response = client.get("/api/status", headers=authorization_headers)
+
+    assert response.status_code == 401
+    assert response.json == {"error": "Missing or wrong API token"}
+
+
+def test_api_with_a_token_serves_requests_carrying_it(app_module):
+    app_module.SERVER_SETTINGS = dataclasses.replace(app_module.SERVER_SETTINGS, api_token="s3cret")
+    client = app_module.app.test_client()
+
+    api_response = client.get("/api/status", headers={"Authorization": "Bearer s3cret"})
+    dashboard_response = client.get("/")
+
+    assert api_response.status_code == 200
+    assert dashboard_response.status_code == 200
+
+
+def test_the_database_lives_in_the_configured_data_dir(app_module, tmp_path):
+    assert (tmp_path / "data" / "scraper.db").exists()
+    assert not (tmp_path / "scraper.db").exists()
 
 
 def test_recording_through_the_api_saves_the_session(app_module, fixture_site_url):
