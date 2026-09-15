@@ -2,6 +2,7 @@
 // API client and UI management
 
 const API_BASE = '/api';
+const API_TOKEN_KEY = 'recordscrape.apiToken';
 let recordingStatus = 'idle';
 let statusCheckInterval = null;
 
@@ -45,7 +46,7 @@ function startStatusPolling() {
 
 async function updateStatus() {
     try {
-        const response = await fetch(`${API_BASE}/status`);
+        const response = await apiFetch(`/status`);
         const status = await response.json();
 
         recordingStatus = status.recording ? 'recording' : 'idle';
@@ -133,7 +134,7 @@ async function startRecording() {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/sessions/start`, {
+        const response = await apiFetch(`/sessions/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url, browser: chosenBrowserSettings() })
@@ -155,7 +156,7 @@ async function startRecording() {
 
 async function activatePicker(endpoint, pickerName, instructions) {
     try {
-        const response = await fetch(`${API_BASE}/sessions/${endpoint}`, {
+        const response = await apiFetch(`/sessions/${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -177,7 +178,7 @@ async function stopRecording() {
     const name = 'Session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
 
     try {
-        const response = await fetch(`${API_BASE}/sessions/stop`, {
+        const response = await apiFetch(`/sessions/stop`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name })
@@ -203,7 +204,7 @@ async function stopRecording() {
 
 async function loadSessions() {
     try {
-        const response = await fetch(`${API_BASE}/sessions`);
+        const response = await apiFetch(`/sessions`);
         const sessions = await response.json();
 
         renderSessions(sessions);
@@ -285,7 +286,7 @@ function renderSessions(sessions) {
                 <button class="btn btn-secondary btn-small" onclick="viewData(${session.id})">
                     📊 Data
                 </button>
-                <button class="btn btn-secondary btn-small" onclick="window.location.href = '${API_BASE}/sessions/${session.id}/flow'">
+                <button class="btn btn-secondary btn-small" onclick="downloadFromApi('/sessions/${session.id}/flow')">
                     📤 Export
                 </button>
                 <button class="btn btn-danger btn-small" onclick="deleteSession(${session.id})">
@@ -306,7 +307,7 @@ async function replaySession(sessionId) {
     showNotification(`Replaying session in ${mode}...`, 'info');
 
     try {
-        const response = await fetch(`${API_BASE}/sessions/${sessionId}/replay`, {
+        const response = await apiFetch(`/sessions/${sessionId}/replay`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ headless })
@@ -329,7 +330,7 @@ async function deleteSession(sessionId) {
     if (!confirm('Delete this session? This cannot be undone.')) return;
 
     try {
-        await fetch(`${API_BASE}/sessions/${sessionId}`, { method: 'DELETE' });
+        await apiFetch(`/sessions/${sessionId}`, { method: 'DELETE' });
         showNotification('Session deleted', 'success');
         loadSessions();
     } catch (error) {
@@ -343,7 +344,7 @@ async function importFlow(event) {
     if (!flowFile) return;
 
     try {
-        const response = await fetch(`${API_BASE}/flows`, {
+        const response = await apiFetch(`/flows`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: await flowFile.text()
@@ -369,7 +370,7 @@ async function importFlow(event) {
 
 async function loadSchedules() {
     try {
-        const response = await fetch(`${API_BASE}/schedules`);
+        const response = await apiFetch(`/schedules`);
         const schedules = await response.json();
 
         renderSchedules(schedules);
@@ -443,7 +444,7 @@ async function createSchedule(sessionId) {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/schedules`, {
+        const response = await apiFetch(`/schedules`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id: sessionId, frequency_minutes: minutes })
@@ -464,7 +465,7 @@ async function createSchedule(sessionId) {
 
 async function toggleSchedule(scheduleId, enabled) {
     try {
-        await fetch(`${API_BASE}/schedules/${scheduleId}`, {
+        await apiFetch(`/schedules/${scheduleId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled })
@@ -481,7 +482,7 @@ async function deleteSchedule(scheduleId) {
     if (!confirm('Delete this schedule?')) return;
 
     try {
-        await fetch(`${API_BASE}/schedules/${scheduleId}`, { method: 'DELETE' });
+        await apiFetch(`/schedules/${scheduleId}`, { method: 'DELETE' });
         showNotification('Schedule deleted', 'success');
         loadSchedules();
     } catch (error) {
@@ -493,7 +494,7 @@ async function deleteSchedule(scheduleId) {
 
 async function loadData() {
     try {
-        const response = await fetch(`${API_BASE}/data?limit=20`);
+        const response = await apiFetch(`/data?limit=20`);
         const data = await response.json();
 
         renderData(data);
@@ -566,7 +567,7 @@ function renderTableRecord(tableRecord) {
 
 async function viewData(sessionId) {
     try {
-        const response = await fetch(`${API_BASE}/data/${sessionId}`);
+        const response = await apiFetch(`/data/${sessionId}`);
         const data = await response.json();
 
         if (data.length === 0) {
@@ -582,7 +583,59 @@ async function viewData(sessionId) {
 }
 
 function downloadData(dataId, format) {
-    window.location.href = `${API_BASE}/data/${dataId}/export?format=${format}`;
+    downloadFromApi(`/data/${dataId}/export?format=${format}`);
+}
+
+// ==================== API ACCESS ====================
+
+// A server started with RECORDSCRAPE_TOKEN refuses /api requests without it; the dashboard asks
+// for it on the first refusal and keeps it in this browser.
+async function apiFetch(path, options = {}) {
+    const sentToken = localStorage.getItem(API_TOKEN_KEY);
+    const response = await fetch(`${API_BASE}${path}`, withApiToken(options, sentToken));
+    if (response.status !== 401) {
+        return response;
+    }
+    // prompt() blocks, so requests refused together ask once: the rest retry with the stored token.
+    if (localStorage.getItem(API_TOKEN_KEY) === sentToken) {
+        const enteredToken = window.prompt('This server needs its API token (RECORDSCRAPE_TOKEN):');
+        if (!enteredToken) {
+            return response;
+        }
+        localStorage.setItem(API_TOKEN_KEY, enteredToken.trim());
+    }
+    return fetch(`${API_BASE}${path}`, withApiToken(options, localStorage.getItem(API_TOKEN_KEY)));
+}
+
+function withApiToken(options, apiToken) {
+    if (!apiToken) {
+        return options;
+    }
+    return { ...options, headers: { ...options.headers, Authorization: `Bearer ${apiToken}` } };
+}
+
+// Downloads through fetch, because following a link cannot send the API token.
+async function downloadFromApi(path) {
+    const response = await apiFetch(path);
+    if (!response.ok) {
+        const result = await response.json();
+        showNotification('Download failed: ' + result.error, 'error');
+        return;
+    }
+    const downloadLink = document.createElement('a');
+    downloadLink.href = URL.createObjectURL(await response.blob());
+    downloadLink.download = attachmentFilename(response.headers.get('Content-Disposition'));
+    downloadLink.click();
+    // Revoked a turn later: some browsers start reading the blob after click() returns.
+    setTimeout(() => URL.revokeObjectURL(downloadLink.href), 0);
+}
+
+function attachmentFilename(contentDisposition) {
+    const encodedFilename = /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition);
+    if (encodedFilename) {
+        return decodeURIComponent(encodedFilename[1]);
+    }
+    return /filename="?([^";]+)"?/i.exec(contentDisposition)[1];
 }
 
 // ==================== UTILITIES ====================
