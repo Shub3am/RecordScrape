@@ -1,0 +1,11 @@
+# Only what the Dockerfile copies reaches the build, so local databases and virtualenvs never do.
+*
+!pyproject.toml
+!uv.lock
+!app.py
+!recordscrape
+!vpr
+!templates
+!static
+**/__pycache__
+**/*.md

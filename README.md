@@ -93,6 +93,22 @@ The dashboard asks for the token the first time the server refuses it, and keeps
 
 Recording opens a browser window on the machine running the server, so record on your own machine, export the flow, and import it on the server. Runs and schedules work there headless.
 
+### Docker
+
+```bash
+docker build -t recordscrape .
+docker run -d --name recordscrape -p 5001:5001 \
+  -e RECORDSCRAPE_TOKEN=your-token \
+  -v recordscrape-data:/data \
+  recordscrape
+```
+
+- The image is built on Microsoft's Playwright image, which carries Chromium and its system libraries. Chromium and Patchright work out of the box.
+- It listens on `0.0.0.0:5001`, so `RECORDSCRAPE_TOKEN` is required. The database lives in the `/data` volume.
+- Runs with **"Run headless"** unticked open their window on a virtual screen (Xvfb), so sites that behave differently in headless mode still work.
+- Proxy credentials referenced as `${PROXY_PASS}` are read from the container's environment: pass them with `-e PROXY_PASS=...`.
+- CloakBrowser is not in the image by default, because its binary license forbids redistribution. Build your own image with it: `docker build --build-arg WITH_CLOAKBROWSER=1 -t recordscrape .`, and pass `-e CLOAKBROWSER_LICENSE_KEY=...` if your build needs one. Do not push that image to a public registry.
+
 ## Running tests
 
 The tests also run on the Patchright backend, which needs its own browser:
