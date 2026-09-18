@@ -10,7 +10,7 @@ The recorder, the runner, flows, storage, Flask, the scheduler or the worker thr
 
 ## Entry points
 
-`open_browser_context(config)` from `recordscrape.browsers`, used as `async with`. Leaving the block closes the browser and stops that library's driver. `BINDINGS_READY_EVENT` is the DOM event name page scripts listen for.
+`open_browser_context(config)` from `recordscrape.browsers`, used as `async with`. Leaving the block closes the browser and stops that library's driver. `BINDINGS_READY_EVENT` is the DOM event name page scripts listen for. `BROWSER_ERRORS` is the tuple to catch for any browser failure on any backend.
 
 ## Invariants and gotchas
 

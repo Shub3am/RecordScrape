@@ -8,10 +8,8 @@ outlives the recording.
 import asyncio
 
 import pytest
-from patchright.async_api import Error as PatchrightError
-from playwright.async_api import Error as PlaywrightError
 
-from recordscrape.browsers import BrowserConfig, open_browser_context
+from recordscrape.browsers import BROWSER_ERRORS, BrowserConfig, open_browser_context
 from recordscrape.recorder import SessionRecorder
 from recordscrape.recorder.recorder_script import read_page_script
 from tests.fixture_site import serve_fixture_pages
@@ -155,7 +153,7 @@ def test_stop_closes_the_browser(backend, fixture_site_url):
 def test_failed_start_closes_the_browser(backend):
     async def start_on_unreachable_url():
         recorder = SessionRecorder(BrowserConfig(backend=backend))
-        with pytest.raises((PlaywrightError, PatchrightError)):
+        with pytest.raises(BROWSER_ERRORS):
             await recorder.start("http://127.0.0.1:1/")
         return recorder.active_page.context.browser
 

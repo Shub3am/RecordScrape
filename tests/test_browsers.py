@@ -8,10 +8,13 @@ import asyncio
 import logging
 
 import pytest
-from patchright.async_api import Error as PatchrightError
-from playwright.async_api import Error as PlaywrightError
 
-from recordscrape.browsers import BINDINGS_READY_EVENT, BrowserConfig, open_browser_context
+from recordscrape.browsers import (
+    BINDINGS_READY_EVENT,
+    BROWSER_ERRORS,
+    BrowserConfig,
+    open_browser_context,
+)
 from tests.fixture_site import find_closed_local_port, serve_fixture_pages
 
 FIXTURE_PAGES = {
@@ -86,7 +89,7 @@ def test_closing_right_after_a_failed_load_logs_no_error(backend, caplog):
     async def fail_a_load_then_leave_context():
         async with open_browser_context(BrowserConfig(backend=backend)) as browser_context:
             page = await browser_context.new_page()
-            with pytest.raises((PlaywrightError, PatchrightError)):
+            with pytest.raises(BROWSER_ERRORS):
                 await page.goto(f"http://127.0.0.1:{find_closed_local_port()}/")
 
     for _ in range(3):

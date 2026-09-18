@@ -7,12 +7,10 @@ Must not replay recorded actions yet, and must not know about storage, Flask or 
 import asyncio
 import time
 
-from patchright.async_api import Error as PatchrightError
 from patchright.async_api import TimeoutError as PatchrightTimeoutError
-from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from recordscrape.browsers import BrowserConfig, open_browser_context
+from recordscrape.browsers import BROWSER_ERRORS, BrowserConfig, open_browser_context
 
 PICKED_ELEMENT_WAIT_MS = 5000
 
@@ -72,7 +70,7 @@ async def run_session(browser_config: BrowserConfig, recorded_session: dict) -> 
                 )
             )
             extracted_rows = [row for picked_rows in rows_per_picked_element for row in picked_rows]
-    except (PlaywrightError, PatchrightError) as browser_error:
+    except BROWSER_ERRORS as browser_error:
         return {"success": False, "error": str(browser_error), "timestamp": time.time()}
     return {
         "success": True,
