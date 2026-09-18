@@ -7,9 +7,7 @@ from flask import Flask, render_template, request, jsonify
 import threading
 import logging
 from typing import Optional
-from patchright.async_api import Error as PatchrightError
-from playwright.async_api import Error as PlaywrightError
-from recordscrape.browsers import BrowserConfig
+from recordscrape.browsers import BROWSER_ERRORS, BrowserConfig
 from recordscrape.recorder import SessionRecorder
 from recordscrape.worker import BrowserWorker
 from vpr import StorageManager, ScraperScheduler
@@ -63,7 +61,7 @@ def start_session():
         recorder = SessionRecorder(RECORDING_BROWSER_CONFIG)
         try:
             browser_worker.submit(recorder.start(url)).result()
-        except (PlaywrightError, PatchrightError) as browser_error:
+        except BROWSER_ERRORS as browser_error:
             return jsonify({"error": f"Could not open {url}: {browser_error}"}), 400
         current_recorder = recorder
 
