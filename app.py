@@ -11,6 +11,7 @@ import os
 import threading
 import logging
 from typing import Optional
+from urllib.parse import urlparse
 from pydantic import ValidationError
 import waitress
 from recordscrape.browsers import BACKENDS_WITHOUT_BINDINGS, BROWSER_ERRORS, BrowserConfig
@@ -200,10 +201,9 @@ def stop_session():
         if not current_recorder:
             return jsonify({"error": "No active recording"}), 400
 
-        data = request.json
-        name = data.get('name', 'Untitled Session')
-
         session_data = browser_worker.submit(current_recorder.stop()).result()
+        typed_name = request.json.get('name', '').strip()
+        name = typed_name or urlparse(session_data['url']).hostname or session_data['url']
 
         # Save to database
         session_id = storage.create_session(
