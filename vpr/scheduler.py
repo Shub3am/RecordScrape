@@ -5,6 +5,7 @@ Manages periodic execution of scraping sessions using APScheduler.
 
 import dataclasses
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -153,16 +154,11 @@ class ScraperScheduler:
                 logger.error(f"Session {session_id} not found")
                 return
             
-            result = self._run_on_worker(session, headless=True)
+            result = self._run_and_record(session, headless=True, triggered_by="schedule")
             
-            # Save extracted data
             if result.get("success"):
-                data_id = self.storage.save_extracted_data(session_id, result["data"])
                 logger.info(f"Extracted {result.get('items_count', 0)} items, "
-                          f"saved as data ID {data_id}")
-                
-                # Update session run stats
-                self.storage.update_session_run(session_id)
+                          f"saved as data ID {result['data_id']}")
             else:
                 logger.error(f"Scraping failed: {result.get('error', 'Unknown error')}")
             
@@ -192,16 +188,9 @@ class ScraperScheduler:
             if not session:
                 return {"success": False, "error": "Session not found"}
             
-            result = self._run_on_worker(session, headless=headless)
+            result = self._run_and_record(session, headless=headless, triggered_by="manual")
             
-            # Save extracted data
             if result.get("success"):
-                data_id = self.storage.save_extracted_data(session_id, result["data"])
-                result["data_id"] = data_id
-                
-                # Update session run stats
-                self.storage.update_session_run(session_id)
-                
                 logger.info(f"Manual scrape completed, extracted {result.get('items_count', 0)} items")
             
             return result
@@ -210,6 +199,24 @@ class ScraperScheduler:
             logger.error(f"Error in manual scrape: {e}")
             return {"success": False, "error": str(e)}
     
+    def _run_and_record(self, session: dict, headless: bool, triggered_by: str) -> dict:
+        """Runs a session, saves the run whether it succeeded or failed, and returns the run's
+        result with its data_id and duration_ms."""
+        run_started = time.monotonic()
+        result = self._run_on_worker(session, headless)
+        duration_ms = round((time.monotonic() - run_started) * 1000)
+        result["data_id"] = self.storage.save_run(
+            session["id"],
+            result.get("data", []),
+            status="success" if result["success"] else "failed",
+            error=result.get("error"),
+            duration_ms=duration_ms,
+            triggered_by=triggered_by,
+        )
+        result["duration_ms"] = duration_ms
+        self.storage.update_session_run(session["id"])
+        return result
+
     def _run_on_worker(self, session: dict, headless: bool) -> dict:
         """Runs a session on the browser worker and blocks this thread until its result is ready."""
         run_browser_config = dataclasses.replace(

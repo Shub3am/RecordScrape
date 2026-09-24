@@ -9,6 +9,24 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 
+RUN_HISTORY_COLUMNS = {
+    "status": "TEXT NOT NULL DEFAULT 'success'",
+    "error": "TEXT",
+    "duration_ms": "INTEGER",
+    "triggered_by": "TEXT",
+    "items_count": "INTEGER",
+}
+
+
+def run_outcome_fields(row: sqlite3.Row) -> Dict:
+    """The fields every run read carries besides its data: how it ended, how long it took and what started it."""
+    return {
+        "status": row["status"],
+        "error": row["error"],
+        "duration_ms": row["duration_ms"],
+        "triggered_by": row["triggered_by"],
+    }
+
 
 class StorageManager:
     """Manages all database operations for the scraper."""
@@ -75,6 +93,22 @@ class StorageManager:
                 FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE
             )
         """)
+
+        # The run history columns are only ever added here, so new and old databases get the same ones.
+        # Runs saved before run history only ever succeeded, so the status default fits them.
+        run_columns = {column[1] for column in cursor.execute("PRAGMA table_info(extracted_data)")}
+        for added_column, column_type in RUN_HISTORY_COLUMNS.items():
+            if added_column not in run_columns:
+                cursor.execute(f"ALTER TABLE extracted_data ADD COLUMN {added_column} {column_type}")
+        if "items_count" not in run_columns:
+            cursor.execute("UPDATE extracted_data SET items_count = json_array_length(data)")
+
+        # The dashboard polls run stats and the run list, both ordered or filtered by extracted_at.
+        cursor.execute("CREATE INDEX IF NOT EXISTS extracted_data_by_time ON extracted_data (extracted_at)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS extracted_data_by_session_time"
+            " ON extracted_data (session_id, extracted_at)"
+        )
         
         conn.commit()
         conn.close()
@@ -333,15 +367,17 @@ class StorageManager:
     
     # ==================== DATA OPERATIONS ====================
     
-    def save_extracted_data(self, session_id: int, data: Any) -> int:
-        """Save extracted data for a session."""
+    def save_run(self, session_id: int, data: Any, status: str = "success",
+                 error: Optional[str] = None, duration_ms: Optional[int] = None,
+                 triggered_by: Optional[str] = None) -> int:
+        """Save one run of a session. A failed run has status "failed", its error and data []."""
         conn = self._connect()
         cursor = conn.cursor()
         
         cursor.execute("""
-            INSERT INTO extracted_data (session_id, data)
-            VALUES (?, ?)
-        """, (session_id, json.dumps(data)))
+            INSERT INTO extracted_data (session_id, data, status, error, duration_ms, triggered_by, items_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (session_id, json.dumps(data), status, error, duration_ms, triggered_by, len(data)))
         
         data_id = cursor.lastrowid
         conn.commit()
@@ -374,7 +410,8 @@ class StorageManager:
                 "session_id": row["session_id"],
                 "data": json.loads(row["data"]),
                 "has_table": bool(row["has_table"]),
-                "extracted_at": row["extracted_at"]
+                "extracted_at": row["extracted_at"],
+                **run_outcome_fields(row)
             })
         
         return data_list
@@ -403,7 +440,8 @@ class StorageManager:
             "session_id": row["session_id"],
             "session_name": row["session_name"],
             "data": json.loads(row["data"]),
-            "extracted_at": row["extracted_at"]
+            "extracted_at": row["extracted_at"],
+            **run_outcome_fields(row)
         }
 
     def get_all_data(self, limit: int = 50) -> List[Dict]:
@@ -431,7 +469,57 @@ class StorageManager:
                 "session_name": row["session_name"],
                 "data": json.loads(row["data"]),
                 "has_table": bool(row["has_table"]),
-                "extracted_at": row["extracted_at"]
+                "extracted_at": row["extracted_at"],
+                **run_outcome_fields(row)
             })
         
         return data_list
+
+    def get_run_summaries(self, limit: int = 50) -> List[Dict]:
+        """Get the newest runs across all sessions without their data, which can be large."""
+        conn = self._connect()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT ed.id, ed.session_id, ed.extracted_at, ed.status, ed.error, ed.duration_ms,
+                   ed.triggered_by, ed.items_count,
+                   s.name as session_name
+            FROM extracted_data ed
+            JOIN sessions s ON ed.session_id = s.id
+            ORDER BY ed.extracted_at DESC, ed.id DESC
+            LIMIT ?
+        """, (limit,))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [
+            {
+                "id": row["id"],
+                "session_id": row["session_id"],
+                "session_name": row["session_name"],
+                "extracted_at": row["extracted_at"],
+                "items_count": row["items_count"],
+                **run_outcome_fields(row)
+            }
+            for row in rows
+        ]
+
+    def get_run_stats(self, since_hours: int = 24) -> Dict:
+        """Count the runs, failed runs and extracted items of the last since_hours hours."""
+        conn = self._connect()
+        cursor = conn.cursor()
+
+        # extracted_at is SQLite's CURRENT_TIMESTAMP, UTC text, so the cutoff is computed in SQLite too.
+        cursor.execute("""
+            SELECT COUNT(*), COALESCE(SUM(status = 'failed'), 0),
+                   COALESCE(SUM(items_count), 0)
+            FROM extracted_data
+            WHERE extracted_at >= datetime('now', ?)
+        """, (f"-{since_hours} hours",))
+
+        runs, failed_runs, items_extracted = cursor.fetchone()
+        conn.close()
+
+        return {"runs": runs, "failed_runs": failed_runs, "items_extracted": items_extracted}

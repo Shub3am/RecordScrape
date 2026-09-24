@@ -248,6 +248,37 @@ def test_manual_replay_extracts_and_saves_rows(app_module, fixture_site_url):
     assert client.get(f"/api/sessions/{session_id}").json["run_count"] == 1
 
 
+def test_failed_manual_replay_is_saved_as_a_failed_run(app_module):
+    client = app_module.app.test_client()
+    unreachable_url = f"http://127.0.0.1:{find_closed_local_port()}/"
+    session_id = app_module.storage.create_session("Down", unreachable_url, [])
+
+    replay_response = client.post(f"/api/sessions/{session_id}/replay", json={"headless": True})
+
+    assert replay_response.json["success"] is False
+    failed_run = client.get(f"/api/data/{session_id}").json[0]
+    assert failed_run["status"] == "failed"
+    assert "ERR_CONNECTION_REFUSED" in failed_run["error"]
+    assert failed_run["triggered_by"] == "manual"
+    assert failed_run["duration_ms"] >= 0
+    assert client.get(f"/api/sessions/{session_id}").json["run_count"] == 1
+
+
+def test_scheduled_run_is_saved_with_its_trigger(app_module, fixture_site_url):
+    picked_elements = [{"selector": "h2.name", "fallbackSelectors": [], "attribute": "textContent"}]
+    session_id = app_module.storage.create_session(
+        "Products", f"{fixture_site_url}/products", [], picked_elements
+    )
+    schedule_id = app_module.storage.create_schedule(session_id, 60)
+
+    app_module.scheduler._run_scraping_job(session_id, schedule_id)
+
+    scheduled_run = app_module.storage.get_session_data(session_id)[0]
+    assert scheduled_run["status"] == "success"
+    assert scheduled_run["triggered_by"] == "schedule"
+    assert [row["value"] for row in scheduled_run["data"]] == ["Shoe", "Hat"]
+
+
 def test_manual_replay_runs_through_the_sessions_proxy(app_module, fixture_site_url):
     client = app_module.app.test_client()
     picked_elements = [{"selector": "h2.name", "fallbackSelectors": [], "attribute": "textContent"}]
@@ -276,7 +307,7 @@ def test_extraction_downloads_in_each_format(app_module, export_format, expected
     client = app_module.app.test_client()
     shoe_records = [{"name": "Shoe", "price": "$40"}]
     session_id = app_module.storage.create_session("Cards", "https://shop.example", [])
-    data_id = app_module.storage.save_extracted_data(session_id, shoe_records)
+    data_id = app_module.storage.save_run(session_id, shoe_records)
 
     export_response = client.get(f"/api/data/{data_id}/export?format={export_format}")
 
@@ -292,7 +323,7 @@ def test_extraction_downloads_in_each_format(app_module, export_format, expected
 def test_exporting_missing_data_or_an_unknown_format_is_refused(app_module):
     client = app_module.app.test_client()
     session_id = app_module.storage.create_session("Cards", "https://shop.example", [])
-    data_id = app_module.storage.save_extracted_data(session_id, [])
+    data_id = app_module.storage.save_run(session_id, [])
 
     missing_response = client.get(f"/api/data/{data_id + 1}/export?format=csv")
     unknown_format_response = client.get(f"/api/data/{data_id}/export?format=xlsx")
