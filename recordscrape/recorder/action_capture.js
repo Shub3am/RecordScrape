@@ -21,7 +21,13 @@ function startActionCapture(sendToRecorder) {
   window.addEventListener(
     'input',
     (event) => {
-      sendAction({ type: 'input', ...describeTarget(event.target), value: event.target.value });
+      const { target } = event;
+      // Clicking a label also clicks its checkbox, so replaying the clicks alone can toggle it back.
+      // The final checked state lets replay settle it. Other fields get no key at all, because
+      // Playwright turns an undefined property into None rather than dropping it.
+      const checkedState =
+        target.type === 'checkbox' || target.type === 'radio' ? { checked: target.checked } : {};
+      sendAction({ type: 'input', ...describeTarget(target), value: target.value, ...checkedState });
     },
     true,
   );

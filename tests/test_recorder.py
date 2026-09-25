@@ -24,6 +24,7 @@ FIXTURE_PAGES = {
         '<title>Listing</title><h1 class="headline">Deals</h1>'
         '<a id="deal-link" href="/form">deal</a>'
     ),
+    "/options": '<title>Options</title><label><input type="checkbox" id="gift"> gift wrap</label>',
 }
 
 ALL_BACKENDS = ["chromium", "patchright"]
@@ -85,6 +86,23 @@ def test_actions_are_recorded_across_navigation(backend, fixture_site_url):
         },
         {"type": "scroll", "x": 0, "y": 500},
     ]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_checkbox_input_records_its_checked_state(backend, fixture_site_url):
+    async def record_label_click():
+        recorder = SessionRecorder(BrowserConfig(backend=backend))
+        await recorder.start(f"{fixture_site_url}/options")
+        await recorder.active_page.click("label")
+        await wait_until(lambda: recorder.recorded_actions[-1]["type"] == "input")
+        return await recorder.stop()
+
+    recorded_session = asyncio.run(record_label_click())
+
+    checkbox_input = recorded_session["actions"][-1]
+    assert checkbox_input["selector"] == "#gift"
+    assert checkbox_input["value"] == "on"
+    assert checkbox_input["checked"] is True
 
 
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
