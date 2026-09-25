@@ -6,11 +6,11 @@ A powerful visual browser automation platform for recording interactions and aut
 
 - 🎥 **Visual Recording**: Record your browser interactions in real-time
 - 🎯 **Element Selection**: Visually select DOM elements for data extraction
-- 🔄 **Automated Replay**: Reopen the recorded URL, visible or headless, and re-extract the selected elements
+- 🔄 **Automated Replay**: Repeat the recorded clicks, typing and scrolling, visible or headless, then re-extract the selected elements
 - ⏰ **Scheduling**: Run a session every N minutes
 - 📊 **Dashboard**: Web interface for managing sessions, schedules and extracted data
 
-> Replay does not yet repeat recorded clicks or typing, and JSON/CSV export is not implemented yet. Both are on the roadmap.
+> JSON/CSV export is not implemented yet. It is on the roadmap. Sessions recorded before the Playwright recorder only reopen their URL.
 
 ## 🎥 Demo
 

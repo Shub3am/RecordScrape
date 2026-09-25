@@ -2,6 +2,7 @@
 Tests for the runner, run headless against a local fixture site on every backend.
 They pin extraction parity with vpr's SessionReplayer: the same result shape and values, plus the
 fallback selectors, waiting for late elements, and turning a browser failure into a failed result.
+They also pin that recorded steps replay before extraction, and that vpr sessions are not replayed.
 """
 
 import asyncio
@@ -22,7 +23,44 @@ FIXTURE_PAGES = {
         " lateParagraph.id = 'late'; lateParagraph.textContent = 'Loaded';"
         " document.body.append(lateParagraph); }, 300);</script>"
     ),
+    "/search": (
+        '<title>Search</title><h1>Search</h1><input id="query">'
+        '<select id="size"><option value="S">Small</option><option value="M">Medium</option></select>'
+        '<label><input type="checkbox" id="gift"> gift wrap</label>'
+        '<button id="apply">apply</button><p id="summary"></p><a id="next" href="/details">next</a>'
+        "<script>document.getElementById('apply').onclick = () => {"
+        " document.getElementById('summary').textContent = ["
+        " document.getElementById('query').value, document.getElementById('size').value,"
+        " document.getElementById('gift').checked].join('|'); };</script>"
+    ),
+    "/details": (
+        '<title>Details</title><h1>Details</h1><p id="position">0</p><div style="height: 3000px"></div>'
+        "<script>window.addEventListener('scroll', () => {"
+        " document.getElementById('position').textContent = window.scrollY; });</script>"
+    ),
 }
+
+
+def click_step(selector, *fallback_selectors):
+    return {"type": "click", "selector": selector, "fallbackSelectors": list(fallback_selectors)}
+
+
+def input_step(selector, value, *fallback_selectors):
+    return {
+        "type": "input",
+        "selector": selector,
+        "fallbackSelectors": list(fallback_selectors),
+        "value": value,
+    }
+
+
+def picked_text(selector):
+    return {"selector": selector, "fallbackSelectors": [], "attribute": "textContent"}
+
+
+def extracted_values(run_result):
+    return [row["value"] for row in run_result["data"]]
+
 
 ALL_BACKENDS = ["chromium", "patchright"]
 
@@ -104,3 +142,88 @@ def test_unreachable_url_gives_a_failed_result(backend):
     assert run_result["success"] is False
     assert "ERR_CONNECTION_REFUSED" in run_result["error"]
     assert set(run_result) == {"success", "error", "timestamp"}
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_recorded_form_steps_are_replayed_before_extraction(backend, fixture_site_url):
+    search_url = f"{fixture_site_url}/search"
+    recorded_session = {
+        "url": search_url,
+        "actions": [
+            {"type": "navigate", "url": search_url},
+            input_step("#renamed-query", "shoes", "#query"),
+            input_step("#size", "M"),
+            # Clicking the label records the label click and the checkbox click it causes.
+            click_step("label"),
+            click_step("#gift"),
+            {
+                "type": "input",
+                "selector": "#gift",
+                "fallbackSelectors": [],
+                "value": "on",
+                "checked": True,
+            },
+            click_step("#apply"),
+        ],
+        "selectors": [picked_text("#summary")],
+    }
+
+    run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
+
+    assert run_result["success"] is True
+    assert extracted_values(run_result) == ["shoes|M|true"]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_replay_follows_a_link_then_scrolls(backend, fixture_site_url):
+    search_url = f"{fixture_site_url}/search"
+    recorded_session = {
+        "url": search_url,
+        "actions": [
+            {"type": "navigate", "url": search_url},
+            click_step("#next"),
+            {"type": "scroll", "x": 0, "y": 400},
+        ],
+        "selectors": [picked_text("h1"), picked_text("#position")],
+    }
+
+    run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
+
+    assert run_result["success"] is True
+    assert extracted_values(run_result) == ["Details", "400"]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_step_that_matches_nothing_fails_the_run(backend, fixture_site_url, monkeypatch):
+    monkeypatch.setattr(session_runner, "STEP_TARGET_WAIT_MS", 500)
+    search_url = f"{fixture_site_url}/search"
+    recorded_session = {
+        "url": search_url,
+        "actions": [
+            {"type": "navigate", "url": search_url},
+            click_step("#removed-button", ".also-removed"),
+        ],
+        "selectors": [picked_text("h1")],
+    }
+
+    run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
+
+    assert run_result["success"] is False
+    assert run_result["error"] == "Step 2 (click #removed-button) matched nothing within 500 ms"
+
+
+def test_sessions_recorded_under_vpr_only_open_the_start_url(fixture_site_url):
+    search_url = f"{fixture_site_url}/search"
+    recorded_session = {
+        "url": search_url,
+        "actions": [
+            {"type": "navigate", "url": search_url, "timestamp": 1},
+            {"type": "click", "selector": "#next", "timestamp": 2},
+        ],
+        "selectors": [{"selector": "h1", "attribute": "textContent"}],
+    }
+
+    run_result = asyncio.run(run_session(BrowserConfig(backend="chromium"), recorded_session))
+
+    assert run_result["success"] is True
+    assert extracted_values(run_result) == ["Search"]
