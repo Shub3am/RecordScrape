@@ -19,14 +19,13 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 
-BROWSER_BACKEND = "chromium"
-# Recording needs a window the user can click in.
-RECORDING_BROWSER_CONFIG = BrowserConfig(backend=BROWSER_BACKEND, headless=False)
+# Visible because recording needs a window the user can click in; runs choose their own headless.
+BROWSER_CONFIG = BrowserConfig(backend="chromium", headless=False)
 
 # Initialize components
 storage = StorageManager()
 browser_worker = BrowserWorker()
-scheduler = ScraperScheduler(storage, browser_worker, BROWSER_BACKEND)
+scheduler = ScraperScheduler(storage, browser_worker, BROWSER_CONFIG)
 
 # Global recorder instance (one at a time)
 current_recorder: Optional[SessionRecorder] = None
@@ -58,7 +57,7 @@ def start_session():
         if not url:
             return jsonify({"error": "URL is required"}), 400
 
-        recorder = SessionRecorder(RECORDING_BROWSER_CONFIG)
+        recorder = SessionRecorder(BROWSER_CONFIG)
         try:
             browser_worker.submit(recorder.start(url)).result()
         except BROWSER_ERRORS as browser_error:
