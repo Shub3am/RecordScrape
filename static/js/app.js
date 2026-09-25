@@ -24,6 +24,8 @@ function setupEventListeners() {
     document.getElementById('start-recording-btn').addEventListener('click', startRecording);
     document.getElementById('activate-selector-btn').addEventListener('click', activateSelector);
     document.getElementById('stop-recording-btn').addEventListener('click', stopRecording);
+
+    document.getElementById('import-flow-input').addEventListener('change', importFlow);
 }
 
 // ==================== STATUS POLLING ====================
@@ -230,6 +232,9 @@ function renderSessions(sessions) {
                 <button class="btn btn-secondary btn-small" onclick="viewData(${session.id})">
                     📊 Data
                 </button>
+                <button class="btn btn-secondary btn-small" onclick="window.location.href = '${API_BASE}/sessions/${session.id}/flow'">
+                    📤 Export
+                </button>
                 <button class="btn btn-danger btn-small" onclick="deleteSession(${session.id})">
                     🗑️ Delete
                 </button>
@@ -276,6 +281,34 @@ async function deleteSession(sessionId) {
         loadSessions();
     } catch (error) {
         showNotification('Error deleting session: ' + error.message, 'error');
+    }
+}
+
+async function importFlow(event) {
+    const fileInput = event.target;
+    const flowFile = fileInput.files[0];
+    if (!flowFile) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/flows`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: await flowFile.text()
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showNotification(`Imported ${flowFile.name}`, 'success');
+            loadSessions();
+        } else {
+            showNotification(result.error || 'Import failed', 'error');
+        }
+    } catch (error) {
+        showNotification('Error importing flow: ' + error.message, 'error');
+    } finally {
+        // Clearing lets the same file be picked again after it is fixed; otherwise no change event fires.
+        fileInput.value = '';
     }
 }
 
