@@ -3,11 +3,19 @@ Visual Data Scraper - Flask Application
 Main application with REST API for managing sessions, schedules, and data extraction.
 """
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
+import io
 import threading
 import logging
 from typing import Optional
+from pydantic import ValidationError
 from recordscrape.browsers import BROWSER_ERRORS, BrowserConfig
+from recordscrape.flows import (
+    FlowFile,
+    flow_file_json,
+    flow_from_recorded_session,
+    recorded_session_from_flow,
+)
 from recordscrape.recorder import SessionRecorder
 from recordscrape.worker import BrowserWorker
 from vpr import StorageManager, ScraperScheduler
@@ -149,6 +157,41 @@ def replay_session(session_id):
     headless = data.get('headless', False)
     result = scheduler.run_manual(session_id, headless=headless)
     return jsonify(result)
+
+
+# ==================== FLOW FILE API ====================
+
+@app.route('/api/sessions/<int:session_id>/flow', methods=['GET'])
+def export_session_flow(session_id):
+    """Download a session as a flow file."""
+    session = storage.get_session(session_id)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    flow_text = flow_file_json(flow_from_recorded_session(session['name'], session))
+    return send_file(
+        io.BytesIO(flow_text.encode()),
+        mimetype='application/json',
+        as_attachment=True,
+        download_name=f"{session['name']}.flow.json"
+    )
+
+
+@app.route('/api/flows', methods=['POST'])
+def import_flow():
+    """Save an uploaded flow file as a new session."""
+    try:
+        flow = FlowFile.model_validate_json(request.get_data())
+    except ValidationError as validation_error:
+        return jsonify({"error": f"Invalid flow file: {validation_error}"}), 400
+
+    session_id = storage.create_session(name=flow.name, **recorded_session_from_flow(flow))
+
+    return jsonify({
+        "success": True,
+        "session_id": session_id,
+        "message": "Flow imported"
+    })
 
 
 # ==================== SCHEDULE API ====================
