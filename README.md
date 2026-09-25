@@ -7,10 +7,11 @@ A powerful visual browser automation platform for recording interactions and aut
 - 🎥 **Visual Recording**: Record your browser interactions in real-time
 - 🎯 **Element Selection**: Visually select DOM elements for data extraction
 - 🔄 **Automated Replay**: Repeat the recorded clicks, typing and scrolling, visible or headless, then re-extract the selected elements
+- 📄 **Flow Files**: Export a session as a JSON file, edit or share it, and import it back
 - ⏰ **Scheduling**: Run a session every N minutes
 - 📊 **Dashboard**: Web interface for managing sessions, schedules and extracted data
 
-> JSON/CSV export is not implemented yet. It is on the roadmap. Sessions recorded before the Playwright recorder only reopen their URL.
+> JSON/CSV export of extracted data is not implemented yet. It is on the roadmap. Sessions recorded before the Playwright recorder only reopen their URL.
 
 ## 🎥 Demo
 
@@ -94,6 +95,14 @@ uv run pytest
 2. Click **"Replay"** to run it once manually
 3. Extracted data appears in **"Recent Data Extractions"**
 
+### Exporting and Importing Flows
+
+1. Click **"Export"** on a saved session to download it as a `.flow.json` file
+2. Edit it by hand if you want: fix a selector, change a typed value, remove a step
+3. Click **"Import Flow"** above the saved sessions and pick the file to save it as a new session
+
+A flow file holds the start URL, the recorded steps (`click`, `input`, `scroll`) and the picked elements. Unknown keys and files from a newer format version are refused with an error instead of being half loaded.
+
 ### Scheduling Periodic Scraping
 
 1. Click **"Schedule"** on any saved session
@@ -110,6 +119,7 @@ RecordScrape/
 │   ├── worker/            # The one thread all browser work runs on
 │   ├── browsers/          # Chromium and Patchright backends
 │   ├── recorder/          # Session recording and element picking
+│   ├── flows/             # The flow file format for export and import
 │   └── runner/            # Re-extracts picked elements
 ├── vpr/                   # Storage and scheduling
 │   ├── __init__.py
