@@ -11,6 +11,7 @@ from patchright.async_api import TimeoutError as PatchrightTimeoutError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from recordscrape.browsers import BROWSER_ERRORS, BrowserConfig, open_browser_context
+from recordscrape.flows import recorded_by_vpr
 
 PICKED_ELEMENT_WAIT_MS = 5000
 STEP_TARGET_WAIT_MS = 10000
@@ -112,19 +113,11 @@ async def run_session(browser_config: BrowserConfig, recorded_session: dict) -> 
     unchanged. A browser failure or a step that matches nothing becomes `success: False`; any other
     exception is a bug and raises."""
     recorded_steps = recorded_session["actions"]
-    # vpr never replayed its actions, and its clicks include its own overlay, which no longer exists.
-    # Its clicks and inputs are the only ones without fallbackSelectors, so those sessions keep
-    # opening the start URL only.
-    recorded_by_vpr = any(
-        "fallbackSelectors" not in recorded_step
-        for recorded_step in recorded_steps
-        if recorded_step["type"] in ("click", "input")
-    )
     # The recorder records navigate only for the start URL, which is opened before replay.
     # Step numbers count every action so an error points at its position in `actions`.
     replayable_steps = (
         []
-        if recorded_by_vpr
+        if recorded_by_vpr(recorded_steps)
         else [
             (step_number, recorded_step)
             for step_number, recorded_step in enumerate(recorded_steps, start=1)
