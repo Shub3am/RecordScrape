@@ -74,7 +74,7 @@ async def replay_recorded_step(page, step_number: int, recorded_step: dict) -> N
     step_target = page.locator(matched_selector).first
     if recorded_step["type"] == "click":
         await step_target.click()
-    elif "checked" in recorded_step:
+    elif recorded_step.get("checked") is not None:
         await step_target.set_checked(recorded_step["checked"])
     elif await step_target.evaluate("element => element.tagName") == "SELECT":
         await step_target.select_option(recorded_step["value"])
