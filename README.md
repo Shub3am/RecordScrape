@@ -93,7 +93,7 @@ uv run pytest
 ### Extracting a List as Rows
 
 1. While recording, click **"Select Rows"**
-2. Click the same field in two different items, for example the name of the first and the second product. Every item that repeats like them is highlighted as a row
+2. Click the same field in two different items, for example the name of the first and the second product. Every item that repeats like them is highlighted as a row. For a plain list whose items hold only text, click two items themselves
 3. Click other fields inside any highlighted row to add them as columns, then **"Done"**
 
 Each run then saves one record per row, such as `{"name": "Shoe", "price": "$40"}`. A column is named after the clicked element's first CSS class; rename it in an exported flow file. Elements picked with **"Select Elements"** in the same session are added to every row, keyed by their selector.

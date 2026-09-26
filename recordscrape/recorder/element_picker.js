@@ -127,9 +127,7 @@ function installElementPicker(sendToRecorder, activatePickerEvent, activateRowPi
 
   const pickForRowTable = (element) => {
     if (rowTable !== null) {
-      // Searched from the parent: a column reads through its row's querySelector, which never
-      // matches the row itself, so a click on a whole row cannot be a column.
-      const row = element.parentElement?.closest(rowTable.rowSelector) ?? null;
+      const row = element.closest(rowTable.rowSelector);
       if (row === null) {
         statusLabel.textContent = 'Click inside a highlighted row';
         return;

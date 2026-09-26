@@ -33,6 +33,7 @@ FIXTURE_PAGES = {
         '<li class="card"><h2 class="name">Sock</h2><span class="price">$5</span></li>'
         '</ul><p id="footer">footer</p>'
     ),
+    "/tags": '<title>Tags</title><ul class="tags"><li>red</li><li>blue</li><li>green</li></ul>',
 }
 CARD_NAME_COLUMN = {
     "name": "name",
@@ -292,6 +293,41 @@ def test_row_picker_records_a_table_that_replays_into_records(backend, fixture_s
         {"name": "Shoe", "price": "$40"},
         {"name": "Hat", "price": "$15"},
         {"name": "Sock", "price": "$5"},
+    ]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_row_picker_takes_whole_rows_as_a_column(backend, fixture_site_url):
+    async def pick_two_list_items_then_replay():
+        recorder = SessionRecorder(BrowserConfig(backend=backend))
+        await recorder.start(f"{fixture_site_url}/tags")
+        page = recorder.active_page
+        await recorder.activate_row_picker()
+        await page.locator("li").nth(0).click()
+        await page.locator("li").nth(1).click()
+        await wait_until(lambda: recorder.row_table is not None)
+        await page.click("#recordscrape-picker-done")
+        recorded_session = await recorder.stop()
+        return recorded_session, await run_session(BrowserConfig(backend=backend), recorded_session)
+
+    recorded_session, run_result = asyncio.run(pick_two_list_items_then_replay())
+
+    assert recorded_session["table"] == {
+        "rowSelector": "ul.tags > li",
+        "rowFallbackSelectors": ["html > body:nth-of-type(1) > ul:nth-of-type(1) > li"],
+        "columns": [
+            {
+                "name": "column_1",
+                "selector": ":scope",
+                "fallbackSelectors": [],
+                "attribute": "textContent",
+            }
+        ],
+    }
+    assert run_result["data"] == [
+        {"column_1": "red"},
+        {"column_1": "blue"},
+        {"column_1": "green"},
     ]
 
 

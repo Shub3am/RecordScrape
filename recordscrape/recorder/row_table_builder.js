@@ -1,11 +1,10 @@
 // Works out a repeating row, and names for the columns inside it, from the elements the user clicks.
 // Must not change the page or talk to the recorder; the picker does both.
 
-// The rows are the two children of the examples' lowest common ancestor that hold one example each.
-// Returns the row selector and its fallbacks, each matching both rows, with the row that holds the
-// first example, or null when the examples are not inside two sibling rows that share a tag. An
-// example that is its whole row is refused: the column reads through the row's querySelector,
-// which never matches the row itself.
+// The rows are the two children of the examples' lowest common ancestor that hold one example each,
+// or are the examples themselves. Returns the row selector and its fallbacks, each matching both
+// rows, with the row that holds the first example, or null when the examples are not inside two
+// sibling rows that share a tag.
 function buildRowSelectors(firstExample, secondExample) {
   if (firstExample.contains(secondExample) || secondExample.contains(firstExample)) return null;
   let rowContainer = firstExample.parentElement;
@@ -15,7 +14,6 @@ function buildRowSelectors(firstExample, secondExample) {
   const [firstRow, secondRow] = [firstExample, secondExample].map((example) =>
     Array.from(rowContainer.children).find((child) => child.contains(example)),
   );
-  if (firstRow === firstExample || secondRow === secondExample) return null;
   const sharedClassNames = Array.from(firstRow.classList).filter((className) =>
     secondRow.classList.contains(className),
   );
