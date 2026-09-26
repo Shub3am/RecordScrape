@@ -40,6 +40,7 @@ FIXTURE_PAGES = {
         '<li class="card"><h2 class="name">Hat</h2><a class="more" href="/hat">more</a></li>'
         '<li class="card"><h2 class="name"> </h2></li></ul>'
     ),
+    "/tags": '<title>Tags</title><ul class="tags"><li>red</li><li>blue</li></ul>',
     "/table": (
         "<title>Table</title><table><tbody>"
         "<tr><td>Shoe</td><td>40</td></tr><tr><td>Hat</td><td>15</td></tr>"
@@ -315,3 +316,21 @@ def test_row_table_falls_back_through_row_and_column_selectors(backend, fixture_
     run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
 
     assert run_result["data"] == [{"name": "Shoe", "price": "40"}, {"name": "Hat", "price": "15"}]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_row_table_column_at_scope_reads_the_row_itself(backend, fixture_site_url):
+    recorded_session = {
+        "url": f"{fixture_site_url}/tags",
+        "actions": [],
+        "selectors": [],
+        "table": {
+            "rowSelector": "ul.tags > li",
+            "rowFallbackSelectors": [],
+            "columns": [table_column("tag", ":scope")],
+        },
+    }
+
+    run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
+
+    assert run_result["data"] == [{"tag": "red"}, {"tag": "blue"}]
