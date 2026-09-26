@@ -18,4 +18,6 @@ Flask, HTTP, request shapes or the dashboard. `app.py` translates between HTTP a
 - `ScraperScheduler` starts APScheduler in its constructor, so constructing it twice runs every job twice.
 - `ScraperScheduler` runs sessions with `recordscrape/runner/` on the `BrowserWorker` it is given, blocking the APScheduler or request thread until the run ends. It never drives a browser itself.
 - The DB path defaults to `scraper.db` in the current working directory.
+- There is no migrations table. A column added later, like `sessions.row_table`, is also added with `ALTER TABLE` when `PRAGMA table_info` shows an existing database lacks it.
+- A session's `table` is `None` or the row table the runner reads. Its shape is defined in `recordscrape/flows/`, and storage stores it without checking.
 - Sessions saved by the old Selenium recorder mix timestamp units: the first action is in Python seconds, the rest are JS milliseconds. Sessions recorded now use seconds throughout.

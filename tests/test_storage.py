@@ -3,6 +3,8 @@ Characterization tests for StorageManager.
 They pin the current behaviour so the storage move in later milestones cannot change it silently.
 """
 
+import sqlite3
+
 import pytest
 
 from vpr.storage import StorageManager
@@ -32,6 +34,50 @@ def test_session_without_selectors_returns_empty_list(storage):
     session_id = storage.create_session("Demo", "https://example.com", [])
 
     assert storage.get_session(session_id)["selectors"] == []
+
+
+def test_session_round_trips_its_row_table(storage):
+    row_table = {
+        "rowSelector": "ul > li.card",
+        "rowFallbackSelectors": [],
+        "columns": [
+            {"name": "name", "selector": "h2", "fallbackSelectors": [], "attribute": "textContent"}
+        ],
+    }
+
+    with_table_id = storage.create_session("Cards", "https://example.com", [], [], row_table)
+    without_table_id = storage.create_session("Plain", "https://example.com", [])
+
+    assert storage.get_session(with_table_id)["table"] == row_table
+    assert storage.get_session(without_table_id)["table"] is None
+
+
+def test_database_from_before_row_tables_gains_the_column_and_keeps_sessions(tmp_path):
+    db_path = tmp_path / "old.db"
+    old_database = sqlite3.connect(db_path)
+    old_database.execute("""
+        CREATE TABLE sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            actions TEXT NOT NULL,
+            selectors TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_run TIMESTAMP,
+            run_count INTEGER DEFAULT 0
+        )
+    """)
+    old_database.execute(
+        "INSERT INTO sessions (name, url, actions) VALUES ('Old', 'https://example.com', '[]')"
+    )
+    old_database.commit()
+    old_database.close()
+
+    storage = StorageManager(db_path=str(db_path))
+
+    [old_session] = storage.get_all_sessions()
+    assert old_session["name"] == "Old"
+    assert old_session["table"] is None
 
 
 def test_get_missing_session_returns_none(storage):
