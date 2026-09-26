@@ -35,4 +35,4 @@ Storage, Flask, the scheduler, the worker thread or which backend is in use. Cal
 
 ## Who calls it
 
-`app.py`, through the worker: one recorder at a time, opened visible, from the start, selector and stop routes.
+`app.py`, through the worker: one recorder at a time, opened visible, from the start, selector, rows and stop routes.

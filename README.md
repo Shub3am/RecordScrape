@@ -87,7 +87,16 @@ uv run pytest
 1. In **"Record New Session"**, enter the URL you want to scrape and click **"Start Recording"**
 2. A Chromium window opens on that URL
 3. Click **"Select Elements"** and click the elements you want to extract, then **"Done"** in the overlay
-4. Click **"Stop & Save"** to save the session
+4. For a list of items, click **"Select Rows"** instead (see below)
+5. Click **"Stop & Save"** to save the session
+
+### Extracting a List as Rows
+
+1. While recording, click **"Select Rows"**
+2. Click the same field in two different items, for example the name of the first and the second product. Every item that repeats like them is highlighted as a row
+3. Click other fields inside any highlighted row to add them as columns, then **"Done"**
+
+Each run then saves one record per row, such as `{"name": "Shoe", "price": "$40"}`. A column is named after the clicked element's first CSS class; rename it in an exported flow file. Elements picked with **"Select Elements"** in the same session are added to every row, keyed by their selector.
 
 ### Replaying & Extracting Data
 
@@ -101,7 +110,7 @@ uv run pytest
 2. Edit it by hand if you want: fix a selector, change a typed value, remove a step
 3. Click **"Import Flow"** above the saved sessions and pick the file to save it as a new session
 
-A flow file holds the start URL, the recorded steps (`click`, `input`, `scroll`) and the picked elements. Unknown keys and files from a newer format version are refused with an error instead of being half loaded.
+A flow file holds the start URL, the recorded steps (`click`, `input`, `scroll`), the picked elements and, if one was picked, the row `table`. Unknown keys and files from a newer format version are refused with an error instead of being half loaded.
 
 ### Scheduling Periodic Scraping
 

@@ -95,6 +95,22 @@ def activate_selector():
     })
 
 
+@app.route('/api/sessions/rows', methods=['POST'])
+def activate_row_picker():
+    """Activate row selector mode."""
+    global current_recorder
+
+    if not current_recorder:
+        return jsonify({"error": "No active recording"}), 400
+
+    browser_worker.submit(current_recorder.activate_row_picker()).result()
+
+    return jsonify({
+        "success": True,
+        "message": "Row selector mode activated"
+    })
+
+
 @app.route('/api/sessions/stop', methods=['POST'])
 def stop_session():
     """Stop recording and save session."""

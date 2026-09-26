@@ -65,17 +65,29 @@ def test_recording_through_the_api_saves_the_session(app_module, fixture_site_ur
     start_response = client.post("/api/sessions/start", json={"url": start_url})
     status_while_recording = client.get("/api/status").json["recording"]
     selector_response = client.post("/api/sessions/selector")
+    row_picker_response = client.post("/api/sessions/rows")
     stop_response = client.post("/api/sessions/stop", json={"name": "Products"})
 
     assert start_response.json["success"] is True
     assert status_while_recording is True
     assert selector_response.json["success"] is True
+    assert row_picker_response.json["success"] is True
     assert client.get("/api/status").json["recording"] is False
     saved_session = client.get(f"/api/sessions/{stop_response.json['session_id']}").json
     assert saved_session["name"] == "Products"
     assert saved_session["url"] == start_url
     assert saved_session["actions"][0]["type"] == "navigate"
     assert saved_session["selectors"] == []
+    assert saved_session["table"] is None
+
+
+def test_row_picker_without_a_recording_is_refused(app_module):
+    client = app_module.app.test_client()
+
+    row_picker_response = client.post("/api/sessions/rows")
+
+    assert row_picker_response.status_code == 400
+    assert row_picker_response.json["error"] == "No active recording"
 
 
 def test_recording_an_unreachable_url_fails_and_stays_idle(app_module):
