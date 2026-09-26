@@ -2,7 +2,7 @@
 
 ## Owns
 
-The flow file: the versioned JSON form of a recorded session that people export, edit, share and import. Its pydantic models are the only definition of what a valid step or picked element looks like, and it converts between a flow and the recorded-session dict (`url`, `actions`, `selectors`) that storage saves and the runner replays.
+The flow file: the versioned JSON form of a recorded session that people export, edit, share and import. Its pydantic models are the only definition of what a valid step or picked element looks like, and it converts between a flow and the recorded-session dict (`url`, `actions`, `selectors`, `table`) that storage saves and the runner replays.
 
 ## Must not know about
 
@@ -24,6 +24,7 @@ Storage, Flask, browsers, the worker or the recorder's page scripts. Callers rea
 - `fallbackSelectors` is required on steps. The runner treats a click or input without it as a vpr session and skips all replay.
 - `checked` is left out or null on inputs that are not checkboxes or radios. Dumps use `exclude_unset` only to keep files and stored steps the same shape as recorded ones.
 - `value` may be null: the recorder records a contenteditable field that way, and the runner cannot replay it.
+- `table` is optional and holds at most one row table. Its column names must be unique because each one becomes a key in every extracted record. A session without a table exports without the key, so a reader from before row tables still loads the file; one with a table is refused by that reader as an unknown key, which is why `formatVersion` stayed 1.
 - Export drops timestamps and the picker's `tagName` and `preview`, which nothing reads. A vpr session exports no steps and empty fallback lists, which matches how the runner treats it.
 
 ## Who calls it
