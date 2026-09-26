@@ -23,6 +23,7 @@ function setupEventListeners() {
     // Recording controls
     document.getElementById('start-recording-btn').addEventListener('click', startRecording);
     document.getElementById('activate-selector-btn').addEventListener('click', activateSelector);
+    document.getElementById('activate-row-picker-btn').addEventListener('click', activateRowPicker);
     document.getElementById('stop-recording-btn').addEventListener('click', stopRecording);
 
     document.getElementById('import-flow-input').addEventListener('change', importFlow);
@@ -57,6 +58,7 @@ function updateRecordingUI() {
     const statusText = document.getElementById('status-text');
     const startBtn = document.getElementById('start-recording-btn');
     const selectorBtn = document.getElementById('activate-selector-btn');
+    const rowPickerBtn = document.getElementById('activate-row-picker-btn');
     const stopBtn = document.getElementById('stop-recording-btn');
 
     if (recordingStatus === 'recording') {
@@ -64,12 +66,14 @@ function updateRecordingUI() {
         statusText.textContent = 'Recording';
         startBtn.disabled = true;
         selectorBtn.disabled = false;
+        rowPickerBtn.disabled = false;
         stopBtn.disabled = false;
     } else {
         statusDot.className = 'status-dot idle';
         statusText.textContent = 'Idle';
         startBtn.disabled = false;
         selectorBtn.disabled = true;
+        rowPickerBtn.disabled = true;
         stopBtn.disabled = true;
     }
 }
@@ -136,6 +140,25 @@ async function activateSelector() {
         }
     } catch (error) {
         showNotification('Error activating selector: ' + error.message, 'error');
+    }
+}
+
+async function activateRowPicker() {
+    try {
+        const response = await fetch(`${API_BASE}/sessions/rows`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showNotification('Row selector activated! Click the same field in two rows.', 'success');
+        } else {
+            showNotification(result.error || 'Failed to activate row selector', 'error');
+        }
+    } catch (error) {
+        showNotification('Error activating row selector: ' + error.message, 'error');
     }
 }
 
@@ -212,6 +235,10 @@ function renderSessions(sessions) {
                 <div class="stat">
                     <div class="stat-value">${session.selectors.length}</div>
                     <div class="stat-label">Selectors</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">${session.table ? session.table.columns.length : 0}</div>
+                    <div class="stat-label">Row Columns</div>
                 </div>
             </div>
             
@@ -474,10 +501,9 @@ function renderData(dataList) {
             </div>
             
             <div style="max-height: 200px; overflow-y: auto; margin: 15px 0;">
-                ${item.data.slice(0, 5).map(d => `
+                ${item.data.slice(0, 5).map(entry => `
                     <div style="padding: 8px; background: var(--bg-card); margin-bottom: 8px; border-radius: 6px;">
-                        <strong style="color: var(--primary)">${escapeHtml(d.label || d.selector)}</strong><br>
-                        <span style="color: var(--text-secondary); font-size: 0.9rem;">${escapeHtml(d.value.substring(0, 100))}</span>
+                        ${item.has_table ? renderTableRecord(entry) : renderPickedValue(entry)}
                     </div>
                 `).join('')}
                 ${item.data.length > 5 ? `<p style="color: var(--text-secondary); text-align: center;">+ ${item.data.length - 5} more items</p>` : ''}
@@ -493,6 +519,20 @@ function renderData(dataList) {
             </div>
         </div>
     `).join('');
+}
+
+function renderPickedValue(pickedValue) {
+    return `
+        <strong style="color: var(--primary)">${escapeHtml(pickedValue.label || pickedValue.selector)}</strong><br>
+        <span style="color: var(--text-secondary); font-size: 0.9rem;">${escapeHtml(pickedValue.value.substring(0, 100))}</span>
+    `;
+}
+
+function renderTableRecord(tableRecord) {
+    return Object.entries(tableRecord).map(([columnName, cellValue]) => `
+        <strong style="color: var(--primary)">${escapeHtml(columnName)}</strong>:
+        <span style="color: var(--text-secondary); font-size: 0.9rem;">${escapeHtml(cellValue.substring(0, 100))}</span>
+    `).join('<br>');
 }
 
 async function viewData(sessionId) {
