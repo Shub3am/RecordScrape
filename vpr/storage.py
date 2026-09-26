@@ -350,9 +350,11 @@ class StorageManager:
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT * FROM extracted_data 
-            WHERE session_id = ? 
-            ORDER BY extracted_at DESC 
+            SELECT ed.*, s.row_table IS NOT NULL as has_table
+            FROM extracted_data ed
+            JOIN sessions s ON ed.session_id = s.id
+            WHERE ed.session_id = ?
+            ORDER BY ed.extracted_at DESC
             LIMIT ?
         """, (session_id, limit))
         
@@ -365,6 +367,7 @@ class StorageManager:
                 "id": row["id"],
                 "session_id": row["session_id"],
                 "data": json.loads(row["data"]),
+                "has_table": bool(row["has_table"]),
                 "extracted_at": row["extracted_at"]
             })
         
@@ -377,7 +380,7 @@ class StorageManager:
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT ed.*, s.name as session_name
+            SELECT ed.*, s.name as session_name, s.row_table IS NOT NULL as has_table
             FROM extracted_data ed
             JOIN sessions s ON ed.session_id = s.id
             ORDER BY ed.extracted_at DESC
@@ -394,6 +397,7 @@ class StorageManager:
                 "session_id": row["session_id"],
                 "session_name": row["session_name"],
                 "data": json.loads(row["data"]),
+                "has_table": bool(row["has_table"]),
                 "extracted_at": row["extracted_at"]
             })
         

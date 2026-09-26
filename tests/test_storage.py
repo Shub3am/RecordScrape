@@ -9,6 +9,14 @@ import pytest
 
 from vpr.storage import StorageManager
 
+CARD_TABLE = {
+    "rowSelector": "ul > li.card",
+    "rowFallbackSelectors": [],
+    "columns": [
+        {"name": "name", "selector": "h2", "fallbackSelectors": [], "attribute": "textContent"}
+    ],
+}
+
 
 @pytest.fixture
 def storage(tmp_path):
@@ -37,18 +45,10 @@ def test_session_without_selectors_returns_empty_list(storage):
 
 
 def test_session_round_trips_its_row_table(storage):
-    row_table = {
-        "rowSelector": "ul > li.card",
-        "rowFallbackSelectors": [],
-        "columns": [
-            {"name": "name", "selector": "h2", "fallbackSelectors": [], "attribute": "textContent"}
-        ],
-    }
-
-    with_table_id = storage.create_session("Cards", "https://example.com", [], [], row_table)
+    with_table_id = storage.create_session("Cards", "https://example.com", [], [], CARD_TABLE)
     without_table_id = storage.create_session("Plain", "https://example.com", [])
 
-    assert storage.get_session(with_table_id)["table"] == row_table
+    assert storage.get_session(with_table_id)["table"] == CARD_TABLE
     assert storage.get_session(without_table_id)["table"] is None
 
 
@@ -163,6 +163,21 @@ def test_extracted_data_round_trips_per_session(storage):
     assert session_data[0]["data"] == rows
     assert all_data[0]["session_name"] == "Demo"
     assert all_data[0]["data"] == rows
+
+
+def test_extracted_data_says_whether_its_session_has_a_row_table(storage):
+    with_table_id = storage.create_session("Cards", "https://example.com", [], [], CARD_TABLE)
+    without_table_id = storage.create_session("Plain", "https://example.com", [])
+    storage.save_extracted_data(with_table_id, [{"name": "Shoe"}])
+    storage.save_extracted_data(without_table_id, [])
+
+    has_table_by_session = {
+        extraction["session_id"]: extraction["has_table"] for extraction in storage.get_all_data()
+    }
+
+    assert has_table_by_session == {with_table_id: True, without_table_id: False}
+    assert storage.get_session_data(with_table_id)[0]["has_table"] is True
+    assert storage.get_session_data(without_table_id)[0]["has_table"] is False
 
 
 def test_delete_session_cascades_to_schedules_and_data(storage):
