@@ -21,12 +21,15 @@ function buildSelectors(element, root = null) {
     candidateSelectors.push(`#${CSS.escape(element.id)}`);
   }
   if (element.classList.length > 0) {
-    const classPart = Array.from(element.classList, (className) => `.${CSS.escape(className)}`).join('');
-    candidateSelectors.push(tagName + classPart);
+    candidateSelectors.push(tagName + buildClassPart(element.classList));
   }
   const uniqueSelectors = candidateSelectors.filter((selector) => matchesOnly(selector, element, root));
   uniqueSelectors.push(buildPositionPath(element, root));
   return [...new Set(uniqueSelectors)].slice(0, MAX_SELECTORS_PER_ELEMENT);
+}
+
+function buildClassPart(classNames) {
+  return Array.from(classNames, (className) => `.${CSS.escape(className)}`).join('');
 }
 
 function matchesOnly(selector, element, root = null) {

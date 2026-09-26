@@ -22,8 +22,10 @@ function initializeApp() {
 function setupEventListeners() {
     // Recording controls
     document.getElementById('start-recording-btn').addEventListener('click', startRecording);
-    document.getElementById('activate-selector-btn').addEventListener('click', activateSelector);
-    document.getElementById('activate-row-picker-btn').addEventListener('click', activateRowPicker);
+    document.getElementById('activate-selector-btn').addEventListener('click', () =>
+        activatePicker('selector', 'Element selector', 'Click elements in the browser.'));
+    document.getElementById('activate-row-picker-btn').addEventListener('click', () =>
+        activatePicker('rows', 'Row selector', 'Click the same field in two rows.'));
     document.getElementById('stop-recording-btn').addEventListener('click', stopRecording);
 
     document.getElementById('import-flow-input').addEventListener('change', importFlow);
@@ -124,9 +126,9 @@ async function startRecording() {
     }
 }
 
-async function activateSelector() {
+async function activatePicker(endpoint, pickerName, instructions) {
     try {
-        const response = await fetch(`${API_BASE}/sessions/selector`, {
+        const response = await fetch(`${API_BASE}/sessions/${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -134,31 +136,12 @@ async function activateSelector() {
         const result = await response.json();
 
         if (result.success) {
-            showNotification('Element selector activated! Click elements in the browser.', 'success');
+            showNotification(`${pickerName} activated! ${instructions}`, 'success');
         } else {
-            showNotification(result.error || 'Failed to activate selector', 'error');
+            showNotification(result.error || `Failed to activate ${pickerName.toLowerCase()}`, 'error');
         }
     } catch (error) {
-        showNotification('Error activating selector: ' + error.message, 'error');
-    }
-}
-
-async function activateRowPicker() {
-    try {
-        const response = await fetch(`${API_BASE}/sessions/rows`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            showNotification('Row selector activated! Click the same field in two rows.', 'success');
-        } else {
-            showNotification(result.error || 'Failed to activate row selector', 'error');
-        }
-    } catch (error) {
-        showNotification('Error activating row selector: ' + error.message, 'error');
+        showNotification(`Error activating ${pickerName.toLowerCase()}: ` + error.message, 'error');
     }
 }
 

@@ -20,5 +20,5 @@ Flask, HTTP, request shapes or the dashboard. `app.py` translates between HTTP a
 - The DB path defaults to `scraper.db` in the current working directory.
 - There is no migrations table. A column added later, like `sessions.row_table`, is also added with `ALTER TABLE` when `PRAGMA table_info` shows an existing database lacks it.
 - A session's `table` is `None` or the row table the runner reads. Its shape is defined in `recordscrape/flows/`, and storage stores it without checking.
-- Each extraction's `has_table` comes from its session's row table at read time. The data of a table session is one record per row, and otherwise the flat picked-element rows, so the dashboard picks the shape from it.
+- Each extraction's `has_table` comes from its session's row table at read time. The data of a table session is one record per row, and otherwise the flat picked-element rows, so readers tell the two shapes apart by it.
 - Sessions saved by the old Selenium recorder mix timestamp units: the first action is in Python seconds, the rest are JS milliseconds. Sessions recorded now use seconds throughout.

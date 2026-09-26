@@ -2,9 +2,10 @@
 // Must not change the page or talk to the recorder; the picker does both.
 
 // The rows are the two children of the examples' lowest common ancestor that hold one example each.
-// Returns the row selector and its fallbacks, each matching both rows, or null when the examples
-// are not inside two sibling rows that share a tag. An example that is its whole row is refused:
-// the column reads through the row's querySelector, which never matches the row itself.
+// Returns the row selector and its fallbacks, each matching both rows, with the row that holds the
+// first example, or null when the examples are not inside two sibling rows that share a tag. An
+// example that is its whole row is refused: the column reads through the row's querySelector,
+// which never matches the row itself.
 function buildRowSelectors(firstExample, secondExample) {
   if (firstExample.contains(secondExample) || secondExample.contains(firstExample)) return null;
   let rowContainer = firstExample.parentElement;
@@ -15,20 +16,16 @@ function buildRowSelectors(firstExample, secondExample) {
     Array.from(rowContainer.children).find((child) => child.contains(example)),
   );
   if (firstRow === firstExample || secondRow === secondExample) return null;
-  const sharedClassPart = Array.from(firstRow.classList)
-    .filter((className) => secondRow.classList.contains(className))
-    .map((className) => `.${CSS.escape(className)}`)
-    .join('');
-  const rowPart = firstRow.tagName.toLowerCase() + sharedClassPart;
+  const sharedClassNames = Array.from(firstRow.classList).filter((className) =>
+    secondRow.classList.contains(className),
+  );
+  const rowPart = firstRow.tagName.toLowerCase() + buildClassPart(sharedClassNames);
   const rowSelectors = buildSelectors(rowContainer)
     .map((containerSelector) => `${containerSelector} > ${rowPart}`)
-    .filter((rowSelector) => {
-      const matchedRows = Array.from(document.querySelectorAll(rowSelector));
-      return matchedRows.includes(firstRow) && matchedRows.includes(secondRow);
-    });
+    .filter((rowSelector) => firstRow.matches(rowSelector) && secondRow.matches(rowSelector));
   if (rowSelectors.length === 0) return null;
   const [rowSelector, ...rowFallbackSelectors] = rowSelectors;
-  return { rowSelector, rowFallbackSelectors };
+  return { rowSelector, rowFallbackSelectors, firstRow };
 }
 
 // Names a column after the element's first class, else by its position, then adds a numeric
