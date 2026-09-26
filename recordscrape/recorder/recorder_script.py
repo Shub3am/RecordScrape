@@ -11,11 +11,16 @@ from recordscrape.browsers import BINDINGS_READY_EVENT
 RECORD_BINDING = "__recordscrapeRecord"
 
 ACTIVATE_PICKER_EVENT = "recordscrape:activate-picker"
+ACTIVATE_ROW_PICKER_EVENT = "recordscrape:activate-row-picker"
+
 
 # A DOM event reaches listeners in every JS world, so this works from Patchright's isolated evaluate.
-ACTIVATE_PICKER_SCRIPT = (
-    f"() => window.dispatchEvent(new Event({json.dumps(ACTIVATE_PICKER_EVENT)}))"
-)
+def build_window_event_script(event_name: str) -> str:
+    return f"() => window.dispatchEvent(new Event({json.dumps(event_name)}))"
+
+
+ACTIVATE_PICKER_SCRIPT = build_window_event_script(ACTIVATE_PICKER_EVENT)
+ACTIVATE_ROW_PICKER_SCRIPT = build_window_event_script(ACTIVATE_ROW_PICKER_EVENT)
 
 
 def read_page_script(file_name: str) -> str:
@@ -29,6 +34,7 @@ RECORDER_INIT_SCRIPT = f"""
   // Steps recorded inside a frame could not be replayed from the top page, so frames are skipped.
   if (window !== window.top) return;
 {read_page_script("selector_builder.js")}
+{read_page_script("row_table_builder.js")}
 {read_page_script("recorder_channel.js")}
 {read_page_script("action_capture.js")}
 {read_page_script("element_picker.js")}
@@ -36,7 +42,11 @@ RECORDER_INIT_SCRIPT = f"""
     {json.dumps(RECORD_BINDING)},
     {json.dumps(BINDINGS_READY_EVENT)},
   );
-  installElementPicker(sendToRecorder, {json.dumps(ACTIVATE_PICKER_EVENT)});
+  installElementPicker(
+    sendToRecorder,
+    {json.dumps(ACTIVATE_PICKER_EVENT)},
+    {json.dumps(ACTIVATE_ROW_PICKER_EVENT)},
+  );
   startActionCapture(sendToRecorder);
 }})();
 """
