@@ -40,9 +40,15 @@ class StorageManager:
                 selectors TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_run TIMESTAMP,
-                run_count INTEGER DEFAULT 0
+                run_count INTEGER DEFAULT 0,
+                row_table TEXT
             )
         """)
+
+        # Databases created before row tables lack the column; CREATE TABLE IF NOT EXISTS skips them.
+        session_columns = {column[1] for column in cursor.execute("PRAGMA table_info(sessions)")}
+        if "row_table" not in session_columns:
+            cursor.execute("ALTER TABLE sessions ADD COLUMN row_table TEXT")
         
         # Schedules table
         cursor.execute("""
@@ -74,19 +80,21 @@ class StorageManager:
     # ==================== SESSION OPERATIONS ====================
     
     def create_session(self, name: str, url: str, actions: List[Dict], 
-                      selectors: Optional[List[Dict]] = None) -> int:
+                      selectors: Optional[List[Dict]] = None,
+                      table: Optional[Dict] = None) -> int:
         """Create a new session recording."""
         conn = self._connect()
         cursor = conn.cursor()
         
         cursor.execute("""
-            INSERT INTO sessions (name, url, actions, selectors)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO sessions (name, url, actions, selectors, row_table)
+            VALUES (?, ?, ?, ?, ?)
         """, (
             name,
             url,
             json.dumps(actions),
-            json.dumps(selectors) if selectors else None
+            json.dumps(selectors) if selectors else None,
+            json.dumps(table) if table else None
         ))
         
         session_id = cursor.lastrowid
@@ -112,6 +120,7 @@ class StorageManager:
                 "url": row["url"],
                 "actions": json.loads(row["actions"]),
                 "selectors": json.loads(row["selectors"]) if row["selectors"] else [],
+                "table": json.loads(row["row_table"]) if row["row_table"] else None,
                 "created_at": row["created_at"],
                 "last_run": row["last_run"],
                 "run_count": row["run_count"]
@@ -136,6 +145,7 @@ class StorageManager:
                 "url": row["url"],
                 "actions": json.loads(row["actions"]),
                 "selectors": json.loads(row["selectors"]) if row["selectors"] else [],
+                "table": json.loads(row["row_table"]) if row["row_table"] else None,
                 "created_at": row["created_at"],
                 "last_run": row["last_run"],
                 "run_count": row["run_count"]
