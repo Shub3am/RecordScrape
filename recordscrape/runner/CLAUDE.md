@@ -27,7 +27,7 @@ Storage, Flask, the scheduler, the worker thread, the recorder's page scripts or
 - Values follow Selenium's reads so vpr sessions extract the same data: `textContent` is `innerText`, and other attributes read the DOM property first, so `href` and `src` are absolute URLs. Empty values are dropped.
 - `fallbackSelectors` is optional because sessions recorded under vpr lack it.
 - With a row table, `data` is one record per matched row, keyed by column name, instead of the flat rows above. Rows are waited on like picked elements; cells are read the moment rows attach, with no wait of their own. A column that matches nothing in a row reads `""`, and a row whose every value is empty is dropped.
-- Column selectors run through the row's own `querySelector`, so `:scope` means the row and a column reads the first match inside it.
+- Column selectors run through the row's own `querySelector`, so `:scope` means the row and a column reads the first match inside it. `querySelector` never returns the row itself, so a column selector that is exactly `:scope` reads the row instead.
 - With a row table, each single picked element becomes a column keyed by its primary selector, holding its first value on every row. It overwrites a table column of the same name.
 
 ## Who calls it
