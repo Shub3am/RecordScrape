@@ -33,6 +33,18 @@ FIXTURE_PAGES = {
         " document.getElementById('query').value, document.getElementById('size').value,"
         " document.getElementById('gift').checked].join('|'); };</script>"
     ),
+    "/cards": (
+        '<title>Cards</title><h1>Catalog</h1><ul class="results">'
+        '<li class="card"><h2 class="name">Shoe</h2><span class="price">$40</span>'
+        '<a class="more" href="/shoe">more</a></li>'
+        '<li class="card"><h2 class="name">Hat</h2><a class="more" href="/hat">more</a></li>'
+        '<li class="card"><h2 class="name"> </h2></li></ul>'
+    ),
+    "/table": (
+        "<title>Table</title><table><tbody>"
+        "<tr><td>Shoe</td><td>40</td></tr><tr><td>Hat</td><td>15</td></tr>"
+        "</tbody></table>"
+    ),
     "/details": (
         '<title>Details</title><h1>Details</h1><p id="position">0</p><div style="height: 3000px"></div>'
         "<script>window.addEventListener('scroll', () => {"
@@ -56,6 +68,15 @@ def input_step(selector, value, *fallback_selectors):
 
 def picked_text(selector):
     return {"selector": selector, "fallbackSelectors": [], "attribute": "textContent"}
+
+
+def table_column(name, selector, attribute="textContent", *fallback_selectors):
+    return {
+        "name": name,
+        "selector": selector,
+        "fallbackSelectors": list(fallback_selectors),
+        "attribute": attribute,
+    }
 
 
 def extracted_values(run_result):
@@ -85,6 +106,7 @@ def test_picked_elements_are_extracted_like_vpr(backend, fixture_site_url, monke
             {"selector": "#late", "fallbackSelectors": [], "attribute": "textContent"},
             {"selector": "#gone", "fallbackSelectors": [".also-gone"], "attribute": "textContent"},
         ],
+        "table": None,
     }
 
     run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
@@ -135,7 +157,7 @@ def test_picked_elements_are_extracted_like_vpr(backend, fixture_site_url, monke
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
 def test_unreachable_url_gives_a_failed_result(backend):
     unreachable_url = f"http://127.0.0.1:{find_closed_local_port()}/"
-    recorded_session = {"url": unreachable_url, "actions": [], "selectors": []}
+    recorded_session = {"url": unreachable_url, "actions": [], "selectors": [], "table": None}
 
     run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
 
@@ -166,6 +188,7 @@ def test_recorded_form_steps_are_replayed_before_extraction(backend, fixture_sit
             click_step("#apply"),
         ],
         "selectors": [picked_text("#summary")],
+        "table": None,
     }
 
     run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
@@ -185,6 +208,7 @@ def test_replay_follows_a_link_then_scrolls(backend, fixture_site_url):
             {"type": "scroll", "x": 0, "y": 400},
         ],
         "selectors": [picked_text("h1"), picked_text("#position")],
+        "table": None,
     }
 
     run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
@@ -204,6 +228,7 @@ def test_step_that_matches_nothing_fails_the_run(backend, fixture_site_url, monk
             click_step("#removed-button", ".also-removed"),
         ],
         "selectors": [picked_text("h1")],
+        "table": None,
     }
 
     run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
@@ -221,9 +246,72 @@ def test_sessions_recorded_under_vpr_only_open_the_start_url(fixture_site_url):
             {"type": "click", "selector": "#next", "timestamp": 2},
         ],
         "selectors": [{"selector": "h1", "attribute": "textContent"}],
+        "table": None,
     }
 
     run_result = asyncio.run(run_session(BrowserConfig(backend="chromium"), recorded_session))
 
     assert run_result["success"] is True
     assert extracted_values(run_result) == ["Search"]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_row_table_extracts_one_record_per_row_with_singles_as_columns(
+    backend, fixture_site_url, monkeypatch
+):
+    monkeypatch.setattr(session_runner, "PICKED_ELEMENT_WAIT_MS", 1000)
+    recorded_session = {
+        "url": f"{fixture_site_url}/cards",
+        "actions": [],
+        "selectors": [picked_text("h1"), picked_text("#gone")],
+        "table": {
+            "rowSelector": "ul.results > li.card",
+            "rowFallbackSelectors": [],
+            "columns": [
+                table_column("name", "h2.name"),
+                table_column("price", "span.price"),
+                table_column("link", "a.more", "href"),
+            ],
+        },
+    }
+
+    run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
+
+    assert run_result["data"] == [
+        {
+            "name": "Shoe",
+            "price": "$40",
+            "link": f"{fixture_site_url}/shoe",
+            "h1": "Catalog",
+            "#gone": "",
+        },
+        {
+            "name": "Hat",
+            "price": "",
+            "link": f"{fixture_site_url}/hat",
+            "h1": "Catalog",
+            "#gone": "",
+        },
+    ]
+    assert run_result["items_count"] == 2
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_row_table_falls_back_through_row_and_column_selectors(backend, fixture_site_url):
+    recorded_session = {
+        "url": f"{fixture_site_url}/table",
+        "actions": [],
+        "selectors": [],
+        "table": {
+            "rowSelector": "tr.renamed",
+            "rowFallbackSelectors": ["tbody > tr"],
+            "columns": [
+                table_column("name", "td.renamed", "textContent", ":scope > td:nth-of-type(1)"),
+                table_column("price", ":scope > td:nth-of-type(2)"),
+            ],
+        },
+    }
+
+    run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
+
+    assert run_result["data"] == [{"name": "Shoe", "price": "40"}, {"name": "Hat", "price": "15"}]

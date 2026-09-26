@@ -2,7 +2,7 @@
 
 ## Owns
 
-Running a recorded session: opening a browser through `recordscrape/browsers/`, loading the session's start URL, replaying its recorded clicks, inputs and scrolls, and reading the current value of every picked element.
+Running a recorded session: opening a browser through `recordscrape/browsers/`, loading the session's start URL, replaying its recorded clicks, inputs and scrolls, and reading the current value of every picked element and of its row table.
 
 ## Must not know about
 
@@ -10,7 +10,7 @@ Storage, Flask, the scheduler, the worker thread, the recorder's page scripts or
 
 ## Entry points
 
-`await run_session(browser_config, recorded_session)` from `recordscrape.runner`. `recorded_session` is the dict `SessionRecorder.stop()` returns, or a session row from `vpr/storage.py`; only `url`, `actions` and `selectors` are read.
+`await run_session(browser_config, recorded_session)` from `recordscrape.runner`. `recorded_session` is the dict `SessionRecorder.stop()` returns, or a session row from `vpr/storage.py`; only `url`, `actions`, `selectors` and `table` are read, and all four must be present.
 
 ## Invariants and gotchas
 
@@ -26,6 +26,9 @@ Storage, Flask, the scheduler, the worker thread, the recorder's page scripts or
 - Every row carries the element's primary `selector`, even when a fallback matched, because the dashboard labels rows by it.
 - Values follow Selenium's reads so vpr sessions extract the same data: `textContent` is `innerText`, and other attributes read the DOM property first, so `href` and `src` are absolute URLs. Empty values are dropped.
 - `fallbackSelectors` is optional because sessions recorded under vpr lack it.
+- With a row table, `data` is one record per matched row, keyed by column name, instead of the flat rows above. Rows are waited on like picked elements; cells are read the moment rows attach, with no wait of their own. A column that matches nothing in a row reads `""`, and a row whose every value is empty is dropped.
+- Column selectors run through the row's own `querySelector`, so `:scope` means the row and a column reads the first match inside it.
+- With a row table, each single picked element becomes a column keyed by its primary selector, holding its first value on every row. It overwrites a table column of the same name.
 
 ## Who calls it
 
