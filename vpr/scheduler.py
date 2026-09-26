@@ -11,7 +11,7 @@ from typing import Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from recordscrape.browsers import BrowserConfig
-from recordscrape.runner import run_session
+from recordscrape.runner import SESSION_OWN_LIMITS, RunOptions, run_session
 from recordscrape.worker import BrowserWorker
 from vpr.storage import StorageManager
 
@@ -154,7 +154,9 @@ class ScraperScheduler:
                 logger.error(f"Session {session_id} not found")
                 return
             
-            result = self._run_and_record(session, headless=True, triggered_by="schedule")
+            result = self._run_and_record(
+                session, headless=True, triggered_by="schedule", run_options=SESSION_OWN_LIMITS
+            )
             
             if result.get("success"):
                 logger.info(f"Extracted {result.get('items_count', 0)} items, "
@@ -168,13 +170,14 @@ class ScraperScheduler:
         except Exception as e:
             logger.error(f"Error in scraping job: {e}")
     
-    def run_manual(self, session_id: int, headless: bool = False) -> dict:
+    def run_manual(self, session_id: int, headless: bool, run_options: RunOptions) -> dict:
         """
         Manually trigger a scraping job (not scheduled).
         
         Args:
             session_id: ID of session to replay
-            headless: Whether to run in headless mode (default: False for visible browser)
+            headless: Whether to run in headless mode
+            run_options: Limits this run sets over the session's own
             
         Returns:
             Result dictionary from run_session
@@ -188,7 +191,9 @@ class ScraperScheduler:
             if not session:
                 return {"success": False, "error": "Session not found"}
             
-            result = self._run_and_record(session, headless=headless, triggered_by="manual")
+            result = self._run_and_record(
+                session, headless=headless, triggered_by="manual", run_options=run_options
+            )
             
             if result.get("success"):
                 logger.info(f"Manual scrape completed, extracted {result.get('items_count', 0)} items")
@@ -199,11 +204,12 @@ class ScraperScheduler:
             logger.error(f"Error in manual scrape: {e}")
             return {"success": False, "error": str(e)}
     
-    def _run_and_record(self, session: dict, headless: bool, triggered_by: str) -> dict:
+    def _run_and_record(self, session: dict, headless: bool, triggered_by: str,
+                        run_options: RunOptions) -> dict:
         """Runs a session, saves the run whether it succeeded or failed, and returns the run's
         result with its data_id and duration_ms."""
         run_started = time.monotonic()
-        result = self._run_on_worker(session, headless)
+        result = self._run_on_worker(session, headless, run_options)
         duration_ms = round((time.monotonic() - run_started) * 1000)
         result["data_id"] = self.storage.save_run(
             session["id"],
@@ -217,12 +223,14 @@ class ScraperScheduler:
         self.storage.update_session_run(session["id"])
         return result
 
-    def _run_on_worker(self, session: dict, headless: bool) -> dict:
+    def _run_on_worker(self, session: dict, headless: bool, run_options: RunOptions) -> dict:
         """Runs a session on the browser worker and blocks this thread until its result is ready."""
         run_browser_config = dataclasses.replace(
             self.browser_config, headless=headless, **(session["browser"] or {})
         )
-        return self.browser_worker.submit(run_session(run_browser_config, session)).result()
+        return self.browser_worker.submit(
+            run_session(run_browser_config, session, run_options)
+        ).result()
 
     def get_job_status(self, schedule_id: int) -> Optional[dict]:
         """Get status of a scheduled job."""

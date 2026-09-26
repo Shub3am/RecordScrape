@@ -13,6 +13,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from recordscrape.browsers import BROWSER_ERRORS, BrowserConfig, open_browser_context
 from recordscrape.flows import recorded_by_vpr
+from recordscrape.runner.run_options import RunOptions
 
 PICKED_ELEMENT_WAIT_MS = 5000
 STEP_TARGET_WAIT_MS = 10000
@@ -197,14 +198,18 @@ async def read_row_table_after_scrolling(page, row_table: dict, max_scrolls: int
     return await read_row_table(page, row_table)
 
 
-async def read_following_pages(page, row_table: dict, next_button: dict) -> list[dict]:
+async def read_following_pages(
+    page, row_table: dict, next_button: dict, max_pages: int, records_wanted: int | None
+) -> list[dict]:
     """Returns the records of every page after the current one, clicking the next button until
-    maxPages pages are read, the button is missing, hidden or disabled, or a click leaves the rows
-    unchanged for PAGE_CHANGE_WAIT_MS."""
+    max_pages pages are read, records_wanted records are read, the button is missing, hidden or
+    disabled, or a click leaves the rows unchanged for PAGE_CHANGE_WAIT_MS."""
     row_selectors = ", ".join(row_candidate_selectors(row_table))
     candidate_next_selectors = [next_button["selector"], *next_button["fallbackSelectors"]]
     following_records = []
-    for _ in range(next_button["maxPages"] - 1):
+    for _ in range(max_pages - 1):
+        if records_wanted is not None and len(following_records) >= records_wanted:
+            break
         # A server-rendered pager comes after the rows, which attach while the document still parses.
         await page.wait_for_load_state()
         next_button_selector = await first_matching_selector(page, candidate_next_selectors)
@@ -226,7 +231,15 @@ async def read_following_pages(page, row_table: dict, next_button: dict) -> list
     return following_records
 
 
-async def run_session(browser_config: BrowserConfig, recorded_session: dict) -> dict:
+# RunOptions is frozen, so one shared default cannot be changed by a run.
+SESSION_OWN_LIMITS = RunOptions()
+
+
+async def run_session(
+    browser_config: BrowserConfig,
+    recorded_session: dict,
+    run_options: RunOptions = SESSION_OWN_LIMITS,
+) -> dict:
     """Returns the result dict vpr's SessionReplayer did, so the scheduler and dashboard read it
     unchanged. A browser failure or a step that matches nothing becomes `success: False`; any other
     exception is a bug and raises."""
@@ -264,7 +277,11 @@ async def run_session(browser_config: BrowserConfig, recorded_session: dict) -> 
                 # Tables stored before pagination existed have no pagination key.
                 table_pagination = row_table.get("pagination") or {}
                 first_page_table_read = (
-                    read_row_table_after_scrolling(page, row_table, table_pagination["maxScrolls"])
+                    read_row_table_after_scrolling(
+                        page,
+                        row_table,
+                        run_options.max_scrolls or table_pagination["maxScrolls"],
+                    )
                     if table_pagination.get("mode") == "infiniteScroll"
                     else read_row_table(page, row_table)
                 )
@@ -273,7 +290,18 @@ async def run_session(browser_config: BrowserConfig, recorded_session: dict) -> 
                 )
                 # Single picked elements are read on the first page only, before it is left.
                 if table_pagination.get("mode") == "nextButton":
-                    table_records += await read_following_pages(page, row_table, table_pagination)
+                    records_wanted = (
+                        None
+                        if run_options.max_rows is None
+                        else run_options.max_rows - len(table_records)
+                    )
+                    table_records += await read_following_pages(
+                        page,
+                        row_table,
+                        table_pagination,
+                        run_options.max_pages or table_pagination["maxPages"],
+                        records_wanted,
+                    )
                 # Each single picked element becomes a column holding its first value on every row.
                 single_columns = {
                     picked_element["selector"]: picked_rows[0]["value"] if picked_rows else ""
@@ -286,6 +314,7 @@ async def run_session(browser_config: BrowserConfig, recorded_session: dict) -> 
                 ]
     except (*BROWSER_ERRORS, RecordedStepFailed) as run_error:
         return {"success": False, "error": str(run_error), "timestamp": time.time()}
+    extracted_rows = extracted_rows[: run_options.max_rows]
     return {
         "success": True,
         "url": recorded_session["url"],
