@@ -114,7 +114,8 @@ def stop_session():
             name=name,
             url=session_data['url'],
             actions=session_data['actions'],
-            selectors=session_data.get('selectors', [])
+            selectors=session_data.get('selectors', []),
+            table=session_data['table']
         )
         
         current_recorder = None

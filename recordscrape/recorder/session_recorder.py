@@ -11,6 +11,7 @@ from contextlib import AsyncExitStack
 from recordscrape.browsers import BrowserConfig, open_browser_context
 from recordscrape.recorder.recorder_script import (
     ACTIVATE_PICKER_SCRIPT,
+    ACTIVATE_ROW_PICKER_SCRIPT,
     RECORD_BINDING,
     RECORDER_INIT_SCRIPT,
 )
@@ -22,6 +23,7 @@ class SessionRecorder:
         self.start_url = ""
         self.recorded_actions: list[dict] = []
         self.picked_elements: list[dict] = []
+        self.row_table: dict | None = None
         # The page the user last acted on, which is where the picker opens.
         self.active_page = None
         self.context_exit_stack: AsyncExitStack | None = None
@@ -47,6 +49,10 @@ class SessionRecorder:
         """Opens the picker overlay and returns at once; picks arrive until the user presses Done."""
         await self.active_page.evaluate(ACTIVATE_PICKER_SCRIPT)
 
+    async def activate_row_picker(self) -> None:
+        """Opens the picker overlay in row mode and returns at once; the table arrives as it grows."""
+        await self.active_page.evaluate(ACTIVATE_ROW_PICKER_SCRIPT)
+
     async def stop(self) -> dict:
         """Closes the browser and returns the session, keyed like vpr's SessionRecorder output."""
         await self.context_exit_stack.aclose()
@@ -54,12 +60,16 @@ class SessionRecorder:
             "url": self.start_url,
             "actions": self.recorded_actions,
             "selectors": self.picked_elements,
+            "table": self.row_table,
         }
 
     def receive_page_message(self, binding_source: dict, page_message: dict) -> None:
         self.active_page = binding_source["page"]
         if page_message["kind"] == "pick":
             self.picked_elements.append(page_message["pickedElement"])
+        elif page_message["kind"] == "table":
+            # The page sends the whole table on every change, so the latest message is the table.
+            self.row_table = page_message["table"]
         else:
             self.record_action(page_message["action"])
 
