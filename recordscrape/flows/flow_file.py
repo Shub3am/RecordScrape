@@ -51,10 +51,27 @@ class TableColumn(FlowFileModel):
     attribute: str
 
 
+class NextButtonPagination(FlowFileModel):
+    mode: Literal["nextButton"]
+    selector: str
+    fallbackSelectors: list[str]
+    # Counts every page read, the first one included.
+    maxPages: int = Field(ge=1)
+
+
+class InfiniteScrollPagination(FlowFileModel):
+    mode: Literal["infiniteScroll"]
+    maxScrolls: int = Field(ge=1)
+
+
 class RowTable(FlowFileModel):
     rowSelector: str
     rowFallbackSelectors: list[str]
     columns: list[TableColumn] = Field(min_length=1)
+    pagination: (
+        Annotated[NextButtonPagination | InfiniteScrollPagination, Field(discriminator="mode")]
+        | None
+    ) = None
 
     @field_validator("columns")
     @classmethod
@@ -128,5 +145,5 @@ def recorded_session_from_flow(flow: FlowFile) -> dict:
         "url": flow.startUrl,
         "actions": [step.model_dump(exclude_unset=True) for step in flow.steps],
         "selectors": [picked_element.model_dump() for picked_element in flow.pickedElements],
-        "table": None if flow.table is None else flow.table.model_dump(),
+        "table": None if flow.table is None else flow.table.model_dump(exclude_unset=True),
     }
