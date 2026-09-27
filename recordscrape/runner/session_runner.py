@@ -1,6 +1,7 @@
 """
 Replays a recorded session's actions in a fresh browser, then re-reads the elements and row table
-picked in it, falling back through each selector list when the one before no longer matches.
+picked in it, falling back through each selector list when the one before no longer matches. A row
+table can span pages through its next button or through scrolling.
 Must not know about storage, Flask or the worker.
 """
 
@@ -15,6 +16,10 @@ from recordscrape.flows import recorded_by_vpr
 
 PICKED_ELEMENT_WAIT_MS = 5000
 STEP_TARGET_WAIT_MS = 10000
+PAGE_CHANGE_WAIT_MS = 10000
+ROW_GROWTH_WAIT_MS = 5000
+
+TIMEOUT_ERRORS = (PlaywrightTimeoutError, PatchrightTimeoutError)
 
 # vpr read values through Selenium: `.text` for textContent, which is the rendered text, and
 # get_attribute for the rest, which returns the property (an absolute href or src) before the
@@ -54,6 +59,29 @@ SCROLL_AND_LET_LISTENERS_RUN_SCRIPT = """([x, y]) => new Promise((resolve) => {
   requestAnimationFrame(() => resolve());
 })"""
 
+READ_ROWS_TEXT_SCRIPT = """(rowSelectors) =>
+  Array.from(document.querySelectorAll(rowSelectors), (row) => row.innerText).join('\\n')"""
+
+# Compares text, not elements: a full page load replaces the rows, but a client-side pager may reuse
+# the same elements and only change what is inside them.
+ROWS_CHANGED_SCRIPT = f"""([rowSelectors, previousRowsText]) => {{
+  const rowsText = ({READ_ROWS_TEXT_SCRIPT})(rowSelectors);
+  return rowsText !== '' && rowsText !== previousRowsText;
+}}"""
+
+# Scrolling the last row into view reaches a list that scrolls inside its own container; scrolling
+# the window to the bottom reaches a loader that sits below the list. Resolves after one frame for
+# the same reason as SCROLL_AND_LET_LISTENERS_RUN_SCRIPT, with the row count before the scroll.
+SCROLL_PAST_LAST_ROW_SCRIPT = """(rowSelectors) => new Promise((resolve) => {
+  const rows = document.querySelectorAll(rowSelectors);
+  rows[rows.length - 1].scrollIntoView();
+  window.scrollTo(0, document.documentElement.scrollHeight);
+  requestAnimationFrame(() => resolve(rows.length));
+})"""
+
+ROW_COUNT_GREW_SCRIPT = """([rowSelectors, previousRowCount]) =>
+  document.querySelectorAll(rowSelectors).length > previousRowCount"""
+
 
 class RecordedStepFailed(Exception):
     """A recorded action found nothing to act on, so extraction would read the wrong page."""
@@ -68,7 +96,7 @@ async def find_matching_selector(
         await page.locator(", ".join(candidate_selectors)).first.wait_for(
             state="attached", timeout=timeout_ms
         )
-    except (PlaywrightTimeoutError, PatchrightTimeoutError):
+    except TIMEOUT_ERRORS:
         return None
     for candidate_selector in candidate_selectors:
         if await page.locator(candidate_selector).count():
@@ -143,6 +171,55 @@ async def read_row_table(page, row_table: dict) -> list[dict]:
     return [row_record for row_record in row_records if any(row_record.values())]
 
 
+async def scroll_until_rows_stop_growing(page, row_table: dict, max_scrolls: int) -> None:
+    """Scrolls past the last row up to max_scrolls times, stopping early when no new row arrives
+    within ROW_GROWTH_WAIT_MS of a scroll."""
+    candidate_selectors = [row_table["rowSelector"], *row_table["rowFallbackSelectors"]]
+    if await find_matching_selector(page, candidate_selectors, PICKED_ELEMENT_WAIT_MS) is None:
+        return
+    row_selectors = ", ".join(candidate_selectors)
+    for _ in range(max_scrolls):
+        row_count = await page.evaluate(SCROLL_PAST_LAST_ROW_SCRIPT, row_selectors)
+        try:
+            await page.wait_for_function(
+                ROW_COUNT_GREW_SCRIPT, arg=[row_selectors, row_count], timeout=ROW_GROWTH_WAIT_MS
+            )
+        except TIMEOUT_ERRORS:
+            return
+
+
+async def read_following_pages(page, row_table: dict, next_button: dict) -> list[dict]:
+    """Returns the records of every page after the current one, clicking the next button until
+    maxPages pages are read, the button is missing, hidden or disabled, or a click leaves the rows
+    unchanged for PAGE_CHANGE_WAIT_MS."""
+    row_selectors = ", ".join([row_table["rowSelector"], *row_table["rowFallbackSelectors"]])
+    candidate_next_selectors = [next_button["selector"], *next_button["fallbackSelectors"]]
+    following_records = []
+    for _ in range(next_button["maxPages"] - 1):
+        # A server-rendered pager comes after the rows, which attach while the document still parses.
+        await page.wait_for_load_state()
+        next_button_target = None
+        for candidate_selector in candidate_next_selectors:
+            if await page.locator(candidate_selector).count():
+                next_button_target = page.locator(candidate_selector).first
+                break
+        if next_button_target is None:
+            break
+        if not (await next_button_target.is_visible() and await next_button_target.is_enabled()):
+            break
+        rows_text = await page.evaluate(READ_ROWS_TEXT_SCRIPT, row_selectors)
+        await next_button_target.click()
+        try:
+            # Re-runs in the new document when the click navigates.
+            await page.wait_for_function(
+                ROWS_CHANGED_SCRIPT, arg=[row_selectors, rows_text], timeout=PAGE_CHANGE_WAIT_MS
+            )
+        except TIMEOUT_ERRORS:
+            break
+        following_records += await read_row_table(page, row_table)
+    return following_records
+
+
 async def run_session(browser_config: BrowserConfig, recorded_session: dict) -> dict:
     """Returns the result dict vpr's SessionReplayer did, so the scheduler and dashboard read it
     unchanged. A browser failure or a step that matches nothing becomes `success: False`; any other
@@ -178,9 +255,18 @@ async def run_session(browser_config: BrowserConfig, recorded_session: dict) -> 
                     row for picked_rows in rows_per_picked_element for row in picked_rows
                 ]
             else:
+                # Tables stored before pagination existed have no pagination key.
+                table_pagination = row_table.get("pagination")
+                if table_pagination is not None and table_pagination["mode"] == "infiniteScroll":
+                    await scroll_until_rows_stop_growing(
+                        page, row_table, table_pagination["maxScrolls"]
+                    )
                 table_records, *rows_per_picked_element = await asyncio.gather(
                     read_row_table(page, row_table), *picked_element_reads
                 )
+                # Single picked elements are read on the first page only, before it is left.
+                if table_pagination is not None and table_pagination["mode"] == "nextButton":
+                    table_records += await read_following_pages(page, row_table, table_pagination)
                 # Each single picked element becomes a column holding its first value on every row.
                 single_columns = {
                     picked_element["selector"]: picked_rows[0]["value"] if picked_rows else ""

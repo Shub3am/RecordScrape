@@ -13,6 +13,8 @@ from recordscrape.browsers import BrowserConfig
 from recordscrape.runner import run_session, session_runner
 from tests.fixture_site import find_closed_local_port, serve_fixture_pages
 
+SHOP_PAGES = [["Shoe", "Hat"], ["Boot", "Cap"], ["Sock", "Belt"]]
+
 FIXTURE_PAGES = {
     "/products": (
         '<title>Products</title><h2 class="name">Shoe</h2><h2 class="name">Hat</h2>'
@@ -46,6 +48,48 @@ FIXTURE_PAGES = {
         "<tr><td>Shoe</td><td>40</td></tr><tr><td>Hat</td><td>15</td></tr>"
         "</tbody></table>"
     ),
+    **{
+        f"/shop?page={page_number}": (
+            f"<title>Shop</title><h1>Shop page {page_number}</h1><ul class='results'>"
+            + "".join(f"<li class='card'><h2 class='name'>{name}</h2></li>" for name in names)
+            + "</ul>"
+            + (
+                ""
+                if page_number == 3
+                else f"<a class='next' href='/shop?page={page_number + 1}'>Next</a>"
+            )
+        )
+        for page_number, names in enumerate(SHOP_PAGES, start=1)
+    },
+    # Renders each page into the same list after a short delay, like a pager fetching JSON, and
+    # marks Next aria-disabled on the last page instead of removing it.
+    "/pager": (
+        "<title>Pager</title><ul class='results'></ul><button class='next'>Next</button>"
+        f"<script>const pages = {SHOP_PAGES}; let pageIndex = 0;"
+        " const list = document.querySelector('ul.results');"
+        " const nextButton = document.querySelector('button.next');"
+        " function renderPage() {"
+        "  list.replaceChildren(...pages[pageIndex].map((name) => {"
+        "   const card = document.createElement('li'); card.className = 'card';"
+        "   card.innerHTML = `<h2 class='name'>${name}</h2>`; return card; }));"
+        "  if (pageIndex === pages.length - 1) nextButton.setAttribute('aria-disabled', 'true'); }"
+        " nextButton.onclick = () => { pageIndex += 1; setTimeout(renderPage, 100); };"
+        " renderPage();</script>"
+    ),
+    # Appends three tall posts whenever the window reaches the bottom, until it holds nine.
+    "/feed": (
+        "<title>Feed</title><ul class='feed'></ul>"
+        "<script>const feed = document.querySelector('ul.feed'); let loading = false;"
+        " function appendPosts() { for (let post = 0; post < 3; post += 1) {"
+        "  const item = document.createElement('li'); item.style.height = '400px';"
+        "  item.textContent = `post ${feed.children.length + 1}`; feed.append(item); } }"
+        " appendPosts();"
+        " window.addEventListener('scroll', () => {"
+        "  const atBottom = window.innerHeight + window.scrollY"
+        "   >= document.documentElement.scrollHeight - 50;"
+        "  if (loading || !atBottom || feed.children.length >= 9) return;"
+        "  loading = true; setTimeout(() => { appendPosts(); loading = false; }, 100); });</script>"
+    ),
     "/details": (
         '<title>Details</title><h1>Details</h1><p id="position">0</p><div style="height: 3000px"></div>'
         "<script>window.addEventListener('scroll', () => {"
@@ -77,6 +121,29 @@ def table_column(name, selector, attribute="textContent", *fallback_selectors):
         "selector": selector,
         "fallbackSelectors": list(fallback_selectors),
         "attribute": attribute,
+    }
+
+
+def paginated_card_session(page_url, table_pagination, picked_elements=()):
+    return {
+        "url": page_url,
+        "actions": [],
+        "selectors": list(picked_elements),
+        "table": {
+            "rowSelector": "ul.results > li.card",
+            "rowFallbackSelectors": [],
+            "columns": [table_column("name", "h2.name")],
+            "pagination": table_pagination,
+        },
+    }
+
+
+def next_button_pagination(selector, max_pages):
+    return {
+        "mode": "nextButton",
+        "selector": selector,
+        "fallbackSelectors": [],
+        "maxPages": max_pages,
     }
 
 
@@ -334,3 +401,70 @@ def test_row_table_column_at_scope_reads_the_row_itself(backend, fixture_site_ur
     run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
 
     assert run_result["data"] == [{"tag": "red"}, {"tag": "blue"}]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_next_button_reads_every_page_with_singles_from_the_first(backend, fixture_site_url):
+    recorded_session = paginated_card_session(
+        f"{fixture_site_url}/shop?page=1",
+        next_button_pagination("a.next", 10),
+        [picked_text("h1")],
+    )
+
+    run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
+
+    assert run_result["data"] == [
+        {"name": name, "h1": "Shop page 1"} for names in SHOP_PAGES for name in names
+    ]
+    assert run_result["items_count"] == 6
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_next_button_stops_at_max_pages(backend, fixture_site_url):
+    recorded_session = paginated_card_session(
+        f"{fixture_site_url}/shop?page=1", next_button_pagination("a.next", 2)
+    )
+
+    run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
+
+    assert [record["name"] for record in run_result["data"]] == ["Shoe", "Hat", "Boot", "Cap"]
+
+
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_client_side_pager_stops_when_next_is_disabled(backend, fixture_site_url):
+    recorded_session = paginated_card_session(
+        f"{fixture_site_url}/pager", next_button_pagination("button.next", 10)
+    )
+
+    run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
+
+    assert [record["name"] for record in run_result["data"]] == [
+        name for names in SHOP_PAGES for name in names
+    ]
+
+
+@pytest.mark.parametrize(
+    "max_scrolls, expected_post_count", [(10, 9), (1, 6)], ids=["to-the-end", "max-scrolls"]
+)
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_infinite_scroll_reads_rows_loaded_by_scrolling(
+    backend, max_scrolls, expected_post_count, fixture_site_url, monkeypatch
+):
+    monkeypatch.setattr(session_runner, "ROW_GROWTH_WAIT_MS", 1000)
+    recorded_session = {
+        "url": f"{fixture_site_url}/feed",
+        "actions": [],
+        "selectors": [],
+        "table": {
+            "rowSelector": "ul.feed > li",
+            "rowFallbackSelectors": [],
+            "columns": [table_column("post", ":scope")],
+            "pagination": {"mode": "infiniteScroll", "maxScrolls": max_scrolls},
+        },
+    }
+
+    run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
+
+    assert run_result["data"] == [
+        {"post": f"post {post_number}"} for post_number in range(1, expected_post_count + 1)
+    ]
