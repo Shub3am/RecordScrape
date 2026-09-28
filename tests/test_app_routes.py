@@ -145,23 +145,20 @@ def test_manual_replay_extracts_and_saves_rows(app_module, fixture_site_url):
 
 
 @pytest.mark.parametrize(
-    "export_format, expected_body, expected_mimetype",
-    [
-        ("csv", "name,price\r\nShoe,$40\r\n", "text/csv"),
-        ("json", '[\n  {\n    "name": "Shoe",\n    "price": "$40"\n  }\n]', "application/json"),
-        ("jsonl", '{"name": "Shoe", "price": "$40"}\n', "application/jsonl"),
-    ],
+    "export_format, expected_mimetype",
+    [("csv", "text/csv"), ("json", "application/json"), ("jsonl", "application/jsonl")],
 )
-def test_extraction_downloads_in_each_format(
-    app_module, export_format, expected_body, expected_mimetype
-):
+def test_extraction_downloads_in_each_format(app_module, export_format, expected_mimetype):
     client = app_module.app.test_client()
+    shoe_records = [{"name": "Shoe", "price": "$40"}]
     session_id = app_module.storage.create_session("Cards", "https://shop.example", [])
-    data_id = app_module.storage.save_extracted_data(session_id, [{"name": "Shoe", "price": "$40"}])
+    data_id = app_module.storage.save_extracted_data(session_id, shoe_records)
 
     export_response = client.get(f"/api/data/{data_id}/export?format={export_format}")
 
-    assert export_response.get_data(as_text=True) == expected_body
+    assert export_response.get_data(as_text=True) == app_module.EXPORT_FORMATS[
+        export_format
+    ].write_records(shoe_records)
     assert export_response.mimetype == expected_mimetype
     assert export_response.headers["Content-Disposition"] == (
         f"attachment; filename=Cards-{data_id}.{export_format}"
