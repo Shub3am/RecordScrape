@@ -10,6 +10,7 @@ import logging
 from typing import Optional
 from pydantic import ValidationError
 from recordscrape.browsers import BROWSER_ERRORS, BrowserConfig
+from recordscrape.exporters import EXPORT_FORMATS
 from recordscrape.flows import (
     FlowFile,
     flow_file_json,
@@ -331,6 +332,26 @@ def get_session_data(session_id):
     limit = request.args.get('limit', 10, type=int)
     data = storage.get_session_data(session_id, limit)
     return jsonify(data)
+
+
+@app.route('/api/data/<int:data_id>/export', methods=['GET'])
+def export_extraction(data_id):
+    """Download one extraction as CSV, JSON or JSONL."""
+    export_format = EXPORT_FORMATS.get(request.args.get('format', ''))
+    if not export_format:
+        return jsonify({"error": f"Format must be one of: {', '.join(EXPORT_FORMATS)}"}), 400
+
+    extraction = storage.get_extraction(data_id)
+    if not extraction:
+        return jsonify({"error": "Data not found"}), 404
+
+    export_text = export_format.write_records(extraction['data'])
+    return send_file(
+        io.BytesIO(export_text.encode()),
+        mimetype=export_format.mimetype,
+        as_attachment=True,
+        download_name=f"{extraction['session_name']}-{data_id}.{export_format.file_extension}"
+    )
 
 
 # ==================== STATUS API ====================
