@@ -26,6 +26,10 @@ function setupEventListeners() {
         activatePicker('selector', 'Element selector', 'Click elements in the browser.'));
     document.getElementById('activate-row-picker-btn').addEventListener('click', () =>
         activatePicker('rows', 'Row selector', 'Click the same field in two rows.'));
+    document.getElementById('activate-next-button-picker-btn').addEventListener('click', () =>
+        activatePicker('next-button', 'Next button selector', 'Click the button that opens the next page.'));
+    document.getElementById('use-infinite-scroll-btn').addEventListener('click', () =>
+        activatePicker('infinite-scroll', 'Infinite scroll', 'Each run scrolls to load more rows.'));
     document.getElementById('stop-recording-btn').addEventListener('click', stopRecording);
 
     document.getElementById('import-flow-input').addEventListener('change', importFlow);
@@ -61,6 +65,8 @@ function updateRecordingUI() {
     const startBtn = document.getElementById('start-recording-btn');
     const selectorBtn = document.getElementById('activate-selector-btn');
     const rowPickerBtn = document.getElementById('activate-row-picker-btn');
+    const nextButtonPickerBtn = document.getElementById('activate-next-button-picker-btn');
+    const infiniteScrollBtn = document.getElementById('use-infinite-scroll-btn');
     const stopBtn = document.getElementById('stop-recording-btn');
 
     if (recordingStatus === 'recording') {
@@ -69,6 +75,8 @@ function updateRecordingUI() {
         startBtn.disabled = true;
         selectorBtn.disabled = false;
         rowPickerBtn.disabled = false;
+        nextButtonPickerBtn.disabled = false;
+        infiniteScrollBtn.disabled = false;
         stopBtn.disabled = false;
     } else {
         statusDot.className = 'status-dot idle';
@@ -76,6 +84,8 @@ function updateRecordingUI() {
         startBtn.disabled = false;
         selectorBtn.disabled = true;
         rowPickerBtn.disabled = true;
+        nextButtonPickerBtn.disabled = true;
+        infiniteScrollBtn.disabled = true;
         stopBtn.disabled = true;
     }
 }

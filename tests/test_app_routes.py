@@ -81,13 +81,40 @@ def test_recording_through_the_api_saves_the_session(app_module, fixture_site_ur
     assert saved_session["table"] is None
 
 
-def test_row_picker_without_a_recording_is_refused(app_module):
+@pytest.mark.parametrize("picker_route", ["rows", "next-button", "infinite-scroll"])
+def test_picker_without_a_recording_is_refused(app_module, picker_route):
     client = app_module.app.test_client()
 
-    row_picker_response = client.post("/api/sessions/rows")
+    picker_response = client.post(f"/api/sessions/{picker_route}")
 
-    assert row_picker_response.status_code == 400
-    assert row_picker_response.json["error"] == "No active recording"
+    assert picker_response.status_code == 400
+    assert picker_response.json["error"] == "No active recording"
+
+
+def test_pagination_needs_rows_then_goes_into_the_saved_table(app_module, fixture_site_url):
+    client = app_module.app.test_client()
+    client.post("/api/sessions/start", json={"url": f"{fixture_site_url}/products"})
+
+    next_button_before_rows = client.post("/api/sessions/next-button")
+    infinite_scroll_before_rows = client.post("/api/sessions/infinite-scroll")
+    # Stands in for the rows the picker would send after two clicks in the browser.
+    picked_row_table = {"rowSelector": "li", "rowFallbackSelectors": [], "columns": []}
+    app_module.current_recorder.row_table = picked_row_table
+    next_button_response = client.post("/api/sessions/next-button")
+    infinite_scroll_response = client.post("/api/sessions/infinite-scroll")
+    stop_response = client.post("/api/sessions/stop", json={"name": "Feed"})
+
+    assert next_button_before_rows.status_code == 400
+    assert next_button_before_rows.json["error"] == "Select rows first"
+    assert infinite_scroll_before_rows.status_code == 400
+    assert infinite_scroll_before_rows.json["error"] == "Select rows first"
+    assert next_button_response.json["success"] is True
+    assert infinite_scroll_response.json["success"] is True
+    saved_session = client.get(f"/api/sessions/{stop_response.json['session_id']}").json
+    assert saved_session["table"] == {
+        **picked_row_table,
+        "pagination": {"mode": "infiniteScroll", "maxScrolls": 10},
+    }
 
 
 def test_recording_an_unreachable_url_fails_and_stays_idle(app_module):
