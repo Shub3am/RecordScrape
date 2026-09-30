@@ -178,7 +178,7 @@ def test_extracted_data_round_trips_per_session(storage):
         {"selector": "h1", "value": "Hello", "attribute": "textContent", "index": 0, "tag": "h1"}
     ]
 
-    storage.save_extracted_data(session_id, rows)
+    storage.save_run(session_id, rows)
     session_data = storage.get_session_data(session_id)
     all_data = storage.get_all_data()
 
@@ -190,8 +190,8 @@ def test_extracted_data_round_trips_per_session(storage):
 def test_extracted_data_says_whether_its_session_has_a_row_table(storage):
     with_table_id = storage.create_session("Cards", "https://example.com", [], [], CARD_TABLE)
     without_table_id = storage.create_session("Plain", "https://example.com", [])
-    storage.save_extracted_data(with_table_id, [{"name": "Shoe"}])
-    storage.save_extracted_data(without_table_id, [])
+    storage.save_run(with_table_id, [{"name": "Shoe"}])
+    storage.save_run(without_table_id, [])
 
     has_table_by_session = {
         extraction["session_id"]: extraction["has_table"] for extraction in storage.get_all_data()
@@ -204,8 +204,8 @@ def test_extracted_data_says_whether_its_session_has_a_row_table(storage):
 
 def test_get_extraction_returns_one_run_with_its_session_name(storage):
     session_id = storage.create_session("Cards", "https://example.com", [], [], CARD_TABLE)
-    storage.save_extracted_data(session_id, [{"name": "Shoe"}])
-    data_id = storage.save_extracted_data(session_id, [{"name": "Hat"}])
+    storage.save_run(session_id, [{"name": "Shoe"}])
+    data_id = storage.save_run(session_id, [{"name": "Hat"}])
 
     extraction = storage.get_extraction(data_id)
 
@@ -214,10 +214,95 @@ def test_get_extraction_returns_one_run_with_its_session_name(storage):
     assert storage.get_extraction(data_id + 1) is None
 
 
+def test_runs_saved_before_run_history_read_as_untimed_counted_successes(tmp_path):
+    db_path = tmp_path / "old.db"
+    StorageManager(db_path=str(db_path))
+    old_database = sqlite3.connect(db_path)
+    old_database.execute("DROP TABLE extracted_data")
+    old_database.execute("""
+        CREATE TABLE extracted_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            data TEXT NOT NULL,
+            extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    old_database.execute(
+        "INSERT INTO sessions (name, url, actions) VALUES ('Old', 'https://example.com', '[]')"
+    )
+    old_database.execute(
+        """INSERT INTO extracted_data (session_id, data) VALUES (1, '[{"name": "Shoe"}, {"name": "Hat"}]')"""
+    )
+    old_database.commit()
+    old_database.close()
+
+    storage = StorageManager(db_path=str(db_path))
+
+    old_run = storage.get_extraction(1)
+    assert old_run["status"] == "success"
+    assert old_run["duration_ms"] is None
+    assert old_run["triggered_by"] is None
+    assert storage.get_run_summaries()[0]["items_count"] == 2
+
+
+def test_failed_run_round_trips_its_outcome(storage):
+    session_id = storage.create_session("Demo", "https://example.com", [])
+
+    data_id = storage.save_run(
+        session_id,
+        [],
+        status="failed",
+        error="net::ERR_CONNECTION_REFUSED",
+        duration_ms=1250,
+        triggered_by="schedule",
+    )
+    failed_run = storage.get_extraction(data_id)
+
+    assert failed_run["data"] == []
+    assert failed_run["status"] == "failed"
+    assert failed_run["error"] == "net::ERR_CONNECTION_REFUSED"
+    assert failed_run["duration_ms"] == 1250
+    assert failed_run["triggered_by"] == "schedule"
+    assert storage.get_all_data()[0]["status"] == "failed"
+    assert storage.get_session_data(session_id)[0]["error"] == "net::ERR_CONNECTION_REFUSED"
+
+
+def test_run_summaries_count_items_newest_first_without_data(storage):
+    session_id = storage.create_session("Cards", "https://example.com", [])
+    storage.save_run(session_id, [{"name": "Shoe"}, {"name": "Hat"}], duration_ms=900)
+    failed_id = storage.save_run(session_id, [], status="failed", error="Timeout")
+
+    summaries = storage.get_run_summaries()
+
+    assert summaries[0]["id"] == failed_id
+    assert [summary["items_count"] for summary in summaries] == [0, 2]
+    assert summaries[1]["session_name"] == "Cards"
+    assert summaries[1]["duration_ms"] == 900
+    assert "data" not in summaries[0]
+
+
+def test_run_stats_count_only_the_recent_window(storage):
+    session_id = storage.create_session("Cards", "https://example.com", [])
+    storage.save_run(session_id, [{"name": "Shoe"}, {"name": "Hat"}])
+    storage.save_run(session_id, [], status="failed", error="Timeout")
+    old_run_id = storage.save_run(session_id, [{"name": "Old"}])
+    database = sqlite3.connect(storage.db_path)
+    database.execute(
+        "UPDATE extracted_data SET extracted_at = datetime('now', '-25 hours') WHERE id = ?",
+        (old_run_id,),
+    )
+    database.commit()
+    database.close()
+
+    stats = storage.get_run_stats(since_hours=24)
+
+    assert stats == {"runs": 2, "failed_runs": 1, "items_extracted": 2}
+
+
 def test_delete_session_cascades_to_schedules_and_data(storage):
     session_id = storage.create_session("Demo", "https://example.com", [])
     schedule_id = storage.create_schedule(session_id, 15)
-    storage.save_extracted_data(session_id, [{"value": "Hello"}])
+    storage.save_run(session_id, [{"value": "Hello"}])
 
     storage.delete_session(session_id)
 
