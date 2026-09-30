@@ -10,7 +10,7 @@ import asyncio
 import pytest
 
 from recordscrape.browsers import BrowserConfig
-from recordscrape.runner import run_session, session_runner
+from recordscrape.runner import RunOptions, run_session, session_runner
 from tests.fixture_site import find_closed_local_port, serve_fixture_pages
 from tests.installed_backends import ALL_BACKENDS
 
@@ -441,12 +441,51 @@ def test_client_side_pager_stops_when_next_is_disabled(backend, fixture_site_url
     ]
 
 
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+def test_run_options_max_pages_overrides_the_sessions_limit(backend, fixture_site_url):
+    recorded_session = paginated_card_session(
+        f"{fixture_site_url}/shop?page=1", next_button_pagination("a.next", 2)
+    )
+
+    run_result = asyncio.run(
+        run_session(BrowserConfig(backend=backend), recorded_session, RunOptions(max_pages=3))
+    )
+
+    assert [record["name"] for record in run_result["data"]] == [
+        name for names in SHOP_PAGES for name in names
+    ]
+
+
+def test_run_options_max_rows_stops_paging_once_enough_rows_are_read(fixture_site_url, monkeypatch):
+    page_reads = []
+    read_row_table = session_runner.read_row_table
+
+    async def counted_read_row_table(page, row_table):
+        page_reads.append(page.url)
+        return await read_row_table(page, row_table)
+
+    monkeypatch.setattr(session_runner, "read_row_table", counted_read_row_table)
+    recorded_session = paginated_card_session(
+        f"{fixture_site_url}/shop?page=1", next_button_pagination("a.next", 10)
+    )
+
+    run_result = asyncio.run(
+        run_session(BrowserConfig(backend="chromium"), recorded_session, RunOptions(max_rows=3))
+    )
+
+    assert [record["name"] for record in run_result["data"]] == ["Shoe", "Hat", "Boot"]
+    assert run_result["items_count"] == 3
+    assert len(page_reads) == 2
+
+
 @pytest.mark.parametrize(
-    "max_scrolls, expected_post_count", [(10, 9), (1, 6)], ids=["to-the-end", "max-scrolls"]
+    "max_scrolls, run_options, expected_post_count",
+    [(10, RunOptions(), 9), (1, RunOptions(), 6), (10, RunOptions(max_scrolls=1), 6)],
+    ids=["to-the-end", "max-scrolls", "run-options-max-scrolls"],
 )
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
 def test_infinite_scroll_reads_rows_loaded_by_scrolling(
-    backend, max_scrolls, expected_post_count, fixture_site_url, monkeypatch
+    backend, max_scrolls, run_options, expected_post_count, fixture_site_url, monkeypatch
 ):
     monkeypatch.setattr(session_runner, "ROW_GROWTH_WAIT_MS", 1000)
     recorded_session = {
@@ -461,7 +500,9 @@ def test_infinite_scroll_reads_rows_loaded_by_scrolling(
         },
     }
 
-    run_result = asyncio.run(run_session(BrowserConfig(backend=backend), recorded_session))
+    run_result = asyncio.run(
+        run_session(BrowserConfig(backend=backend), recorded_session, run_options)
+    )
 
     assert run_result["data"] == [
         {"post": f"post {post_number}"} for post_number in range(1, expected_post_count + 1)

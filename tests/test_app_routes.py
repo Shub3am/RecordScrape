@@ -248,6 +248,37 @@ def test_manual_replay_extracts_and_saves_rows(app_module, fixture_site_url):
     assert client.get(f"/api/sessions/{session_id}").json["run_count"] == 1
 
 
+def test_manual_replay_applies_its_run_options(app_module, fixture_site_url):
+    client = app_module.app.test_client()
+    picked_elements = [{"selector": "h2.name", "fallbackSelectors": [], "attribute": "textContent"}]
+    session_id = app_module.storage.create_session(
+        "Products", f"{fixture_site_url}/products", [], picked_elements
+    )
+
+    replay_response = client.post(
+        f"/api/sessions/{session_id}/replay", json={"headless": True, "max_rows": 1}
+    )
+
+    assert replay_response.json["items_count"] == 1
+    assert client.get(f"/api/data/{session_id}").json[0]["data"][0]["value"] == "Shoe"
+
+
+@pytest.mark.parametrize(
+    "replay_body",
+    [{"max_rows": 0}, {"max_pages": "many"}, {"max_items": 5}],
+    ids=["zero", "not-a-number", "unknown"],
+)
+def test_manual_replay_with_invalid_run_options_is_refused(app_module, replay_body):
+    client = app_module.app.test_client()
+    session_id = app_module.storage.create_session("Demo", "https://example.com", [])
+
+    replay_response = client.post(f"/api/sessions/{session_id}/replay", json=replay_body)
+
+    assert replay_response.status_code == 400
+    assert replay_response.json["error"].startswith("Invalid run options")
+    assert client.get(f"/api/data/{session_id}").json == []
+
+
 def test_failed_manual_replay_is_saved_as_a_failed_run(app_module):
     client = app_module.app.test_client()
     unreachable_url = f"http://127.0.0.1:{find_closed_local_port()}/"

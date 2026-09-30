@@ -24,6 +24,7 @@ from recordscrape.flows import (
     recorded_session_from_flow,
 )
 from recordscrape.recorder import SessionRecorder
+from recordscrape.runner import RunOptions
 from recordscrape.server_settings import server_settings_from_env
 from recordscrape.worker import BrowserWorker
 from vpr import StorageManager, ScraperScheduler
@@ -250,10 +251,15 @@ def delete_session(session_id):
 
 @app.route('/api/sessions/<int:session_id>/replay', methods=['POST'])
 def replay_session(session_id):
-    """Manually replay a session."""
+    """Manually replay a session. Besides headless, the body may set max_pages, max_scrolls and
+    max_rows for this run only."""
     data = request.json or {}
-    headless = data.get('headless', False)
-    result = scheduler.run_manual(session_id, headless=headless)
+    headless = data.pop('headless', False)
+    try:
+        run_options = RunOptions.model_validate(data)
+    except ValidationError as validation_error:
+        return jsonify({"error": f"Invalid run options: {validation_error}"}), 400
+    result = scheduler.run_manual(session_id, headless=headless, run_options=run_options)
     return jsonify(result)
 
 
