@@ -361,7 +361,58 @@ def test_exporting_missing_data_or_an_unknown_format_is_refused(app_module):
 
     assert missing_response.status_code == 404
     assert unknown_format_response.status_code == 400
-    assert unknown_format_response.json["error"] == "Format must be one of: csv, json, jsonl"
+    assert unknown_format_response.json["error"].startswith("Invalid export options")
+
+
+def test_extraction_downloads_with_its_export_options(app_module):
+    client = app_module.app.test_client()
+    session_id = app_module.storage.create_session("Cards", "https://shop.example", [])
+    data_id = app_module.storage.save_run(session_id, [{"name": "Shoe", "price": "$40"}])
+
+    export_response = client.get(
+        f"/api/data/{data_id}/export?format=json&fields=price&envelope=1&pretty=0"
+    )
+
+    assert export_response.json == {
+        "session": "Cards",
+        "run_id": data_id,
+        "extracted_at": app_module.storage.get_extraction(data_id)["extracted_at"],
+        "items_count": 1,
+        "records": [{"price": "$40"}],
+    }
+    assert "\n" not in export_response.get_data(as_text=True)
+
+
+def test_latest_session_data_is_the_newest_successful_run_as_json(app_module):
+    client = app_module.app.test_client()
+    session_id = app_module.storage.create_session("Cards", "https://shop.example", [])
+    app_module.storage.save_run(session_id, [{"name": "Old"}])
+    newest_success_id = app_module.storage.save_run(session_id, [{"name": "Shoe"}])
+    app_module.storage.save_run(session_id, [], status="failed", error="Timeout")
+
+    latest_response = client.get(f"/api/sessions/{session_id}/data/latest")
+    latest_csv_response = client.get(f"/api/sessions/{session_id}/data/latest?format=csv")
+
+    assert latest_response.json == [{"name": "Shoe"}]
+    assert latest_response.headers["Content-Disposition"].startswith("inline")
+    assert latest_csv_response.get_data(as_text=True) == "name\r\nShoe\r\n"
+    assert (
+        newest_success_id == app_module.storage.get_latest_successful_extraction(session_id)["id"]
+    )
+
+
+def test_latest_session_data_without_a_successful_run_is_not_found(app_module):
+    client = app_module.app.test_client()
+    session_id = app_module.storage.create_session("Cards", "https://shop.example", [])
+    app_module.storage.save_run(session_id, [], status="failed", error="Timeout")
+
+    only_failed_response = client.get(f"/api/sessions/{session_id}/data/latest")
+    missing_session_response = client.get(f"/api/sessions/{session_id + 1}/data/latest")
+    invalid_options_response = client.get(f"/api/sessions/{session_id}/data/latest?envelope=x")
+
+    assert only_failed_response.status_code == 404
+    assert missing_session_response.status_code == 404
+    assert invalid_options_response.status_code == 400
 
 
 def test_exported_flow_imports_as_an_equal_session(app_module):

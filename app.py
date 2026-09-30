@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 from pydantic import ValidationError
 import waitress
 from recordscrape.browsers import BACKENDS_WITHOUT_BINDINGS, BROWSER_ERRORS, BrowserConfig
-from recordscrape.exporters import EXPORT_FORMATS
+from recordscrape.exporters import EXPORT_FORMATS, ExportOptions, export_text
 from recordscrape.flows import (
     BrowserSettings,
     FlowFile,
@@ -386,22 +386,48 @@ def get_session_data(session_id):
 
 @app.route('/api/data/<int:data_id>/export', methods=['GET'])
 def export_extraction(data_id):
-    """Download one extraction as CSV, JSON or JSONL."""
-    format_name = request.args.get('format', '')
-    export_format = EXPORT_FORMATS.get(format_name)
-    if not export_format:
-        return jsonify({"error": f"Format must be one of: {', '.join(EXPORT_FORMATS)}"}), 400
+    """Download one extraction as CSV, JSON or JSONL, optionally with only some fields, and for
+    JSON wrapped in its run's details or on one line."""
+    try:
+        export_options = ExportOptions.model_validate(request.args.to_dict())
+    except ValidationError as validation_error:
+        return jsonify({"error": f"Invalid export options: {validation_error}"}), 400
 
     extraction = storage.get_extraction(data_id)
     if not extraction:
         return jsonify({"error": "Data not found"}), 404
 
-    export_text = export_format.write_records(extraction['data'])
+    return extraction_export_response(extraction, export_options, as_attachment=True)
+
+
+@app.route('/api/sessions/<int:session_id>/data/latest', methods=['GET'])
+def get_latest_session_data(session_id):
+    """The session's newest successful run, for integrations that pull it. Takes the export
+    options, with JSON as the default format."""
+    try:
+        export_options = ExportOptions.model_validate({"format": "json", **request.args.to_dict()})
+    except ValidationError as validation_error:
+        return jsonify({"error": f"Invalid export options: {validation_error}"}), 400
+
+    extraction = storage.get_latest_successful_extraction(session_id)
+    if not extraction:
+        return jsonify({"error": "No successful run for this session"}), 404
+
+    return extraction_export_response(extraction, export_options, as_attachment=False)
+
+
+def extraction_export_response(extraction, export_options, as_attachment):
+    run_details = {
+        "session": extraction['session_name'],
+        "run_id": extraction['id'],
+        "extracted_at": extraction['extracted_at'],
+    }
+    export_body = export_text(extraction['data'], export_options, run_details)
     return send_file(
-        io.BytesIO(export_text.encode()),
-        mimetype=export_format.mimetype,
-        as_attachment=True,
-        download_name=f"{extraction['session_name']}-{data_id}.{format_name}"
+        io.BytesIO(export_body.encode()),
+        mimetype=EXPORT_FORMATS[export_options.format].mimetype,
+        as_attachment=as_attachment,
+        download_name=f"{extraction['session_name']}-{extraction['id']}.{export_options.format}"
     )
 
 
