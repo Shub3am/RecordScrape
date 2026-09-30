@@ -10,15 +10,16 @@ import io
 import os
 import threading
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 from urllib.parse import urlparse
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
 import waitress
 from recordscrape.browsers import BACKENDS_WITHOUT_BINDINGS, BROWSER_ERRORS, BrowserConfig
 from recordscrape.exporters import EXPORT_FORMATS, ExportOptions, export_text
 from recordscrape.flows import (
     BrowserSettings,
     FlowFile,
+    RowTable,
     flow_file_json,
     flow_from_recorded_session,
     recorded_session_from_flow,
@@ -239,6 +240,35 @@ def get_session(session_id):
     if session:
         return jsonify(session)
     return jsonify({"error": "Session not found"}), 404
+
+
+class SessionChanges(BaseModel):
+    """A PATCH body. A key left out keeps its value; null is refused, because pydantic does not
+    validate these defaults but does validate a null that is sent."""
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = None
+    # The whole table, so renamed and removed columns and new pagination limits are checked by
+    # the same model an imported flow file is.
+    table: RowTable = None
+
+
+@app.route('/api/sessions/<int:session_id>', methods=['PATCH'])
+def update_session(session_id):
+    """Rename a session or replace its row table."""
+    if not storage.get_session(session_id):
+        return jsonify({"error": "Session not found"}), 404
+    try:
+        session_changes = SessionChanges.model_validate(request.json or {})
+    except ValidationError as validation_error:
+        return jsonify({"error": f"Invalid session changes: {validation_error}"}), 400
+
+    storage.update_session(
+        session_id,
+        name=session_changes.name,
+        table=None if session_changes.table is None else session_changes.table.model_dump(exclude_unset=True),
+    )
+    return jsonify(storage.get_session(session_id))
 
 
 @app.route('/api/sessions/<int:session_id>', methods=['DELETE'])

@@ -193,6 +193,23 @@ class StorageManager:
         
         return sessions
     
+    def update_session(self, session_id: int, name: Optional[str] = None, table: Optional[Dict] = None):
+        """Rename a session, replace its row table, or both."""
+        updates = []
+        params = []
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name)
+        if table is not None:
+            updates.append("row_table = ?")
+            params.append(json.dumps(table))
+
+        if updates:
+            conn = self._connect()
+            conn.execute(f"UPDATE sessions SET {', '.join(updates)} WHERE id = ?", (*params, session_id))
+            conn.commit()
+            conn.close()
+
     def update_session_run(self, session_id: int):
         """Update session last run time and increment run count."""
         conn = self._connect()
