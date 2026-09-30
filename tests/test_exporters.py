@@ -7,7 +7,16 @@ import csv
 import io
 import json
 
-from recordscrape.exporters import records_as_csv, records_as_json, records_as_jsonl
+import pytest
+from pydantic import ValidationError
+
+from recordscrape.exporters import (
+    ExportOptions,
+    export_text,
+    records_as_csv,
+    records_as_json,
+    records_as_jsonl,
+)
 
 TABLE_RECORDS = [
     {"name": "Shoe", "price": "$40"},
@@ -69,3 +78,51 @@ def test_jsonl_writes_one_record_per_line():
     assert jsonl_text.endswith("\n")
     assert [json.loads(line) for line in jsonl_text.splitlines()] == TABLE_RECORDS
     assert records_as_jsonl([]) == ""
+
+
+RUN_DETAILS = {"session": "Cards", "run_id": 7, "extracted_at": "2026-09-30 12:00:00"}
+
+
+def test_fields_keep_only_those_keys_in_that_order_in_every_format():
+    export_options = ExportOptions.model_validate({"format": "json", "fields": "price, name"})
+    csv_options = ExportOptions.model_validate({"format": "csv", "fields": "price,name"})
+
+    exported_records = json.loads(export_text(TABLE_RECORDS, export_options, RUN_DETAILS))
+    csv_rows = list(csv.reader(io.StringIO(export_text(TABLE_RECORDS, csv_options, RUN_DETAILS))))
+
+    assert [list(record) for record in exported_records] == [["price", "name"]] * 3
+    assert exported_records[2] == {"price": "", "name": "Café"}
+    assert csv_rows[0] == ["price", "name"]
+
+
+def test_json_envelope_wraps_records_in_the_run_details():
+    export_options = ExportOptions.model_validate({"format": "json", "envelope": "1"})
+
+    envelope = json.loads(export_text(TABLE_RECORDS, export_options, RUN_DETAILS))
+
+    assert envelope == {**RUN_DETAILS, "items_count": 3, "records": TABLE_RECORDS}
+
+
+def test_json_that_is_not_pretty_is_one_line_without_spaces():
+    export_options = ExportOptions.model_validate({"format": "json", "pretty": "0"})
+
+    json_text = export_text([{"name": "Shoe"}], export_options, RUN_DETAILS)
+
+    assert json_text == '[{"name":"Shoe"}]'
+
+
+@pytest.mark.parametrize(
+    "export_query",
+    [
+        {"format": "xlsx"},
+        {"format": "csv", "envelope": "1"},
+        {"format": "jsonl", "pretty": "0"},
+        {"format": "json", "fields": "name,name"},
+        {"format": "json", "fields": "name,,price"},
+        {"format": "json", "pretty": "maybe"},
+        {"format": "json", "download": "1"},
+    ],
+)
+def test_export_options_refuse_unknown_or_mismatched_options(export_query):
+    with pytest.raises(ValidationError):
+        ExportOptions.model_validate(export_query)

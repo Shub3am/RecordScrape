@@ -418,16 +418,27 @@ class StorageManager:
     
     def get_extraction(self, data_id: int) -> Optional[Dict]:
         """Get one extraction with its session's name."""
+        return self._read_one_extraction("WHERE ed.id = ?", (data_id,))
+
+    def get_latest_successful_extraction(self, session_id: int) -> Optional[Dict]:
+        """Get a session's newest successful run with its session's name, or None if it has none."""
+        return self._read_one_extraction(
+            "WHERE ed.session_id = ? AND ed.status = 'success' ORDER BY ed.extracted_at DESC, ed.id DESC",
+            (session_id,)
+        )
+
+    def _read_one_extraction(self, filter_and_order_sql: str, filter_values: tuple) -> Optional[Dict]:
         conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT ed.*, s.name as session_name
             FROM extracted_data ed
             JOIN sessions s ON ed.session_id = s.id
-            WHERE ed.id = ?
-        """, (data_id,))
+            {filter_and_order_sql}
+            LIMIT 1
+        """, filter_values)
 
         row = cursor.fetchone()
         conn.close()

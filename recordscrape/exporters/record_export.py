@@ -10,6 +10,9 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator, model_validator
 
 # Spreadsheets run a cell starting with one of these as a formula, and scraped text comes from
 # pages anyone can write. A leading apostrophe makes Excel, LibreOffice and Google Sheets show the
@@ -41,8 +44,12 @@ def records_as_csv(records: list[dict]) -> str:
     return csv_text.getvalue()
 
 
-def records_as_json(records: list[dict]) -> str:
-    return json.dumps(records, indent=2, ensure_ascii=False)
+def records_as_json(json_document: list[dict] | dict, pretty: bool = True) -> str:
+    """json_document is the records, or an envelope holding them. Not pretty writes one line with
+    no spaces."""
+    if pretty:
+        return json.dumps(json_document, indent=2, ensure_ascii=False)
+    return json.dumps(json_document, separators=(",", ":"), ensure_ascii=False)
 
 
 def records_as_jsonl(records: list[dict]) -> str:
@@ -61,3 +68,56 @@ EXPORT_FORMATS = {
     "json": ExportFormat(records_as_json, "application/json"),
     "jsonl": ExportFormat(records_as_jsonl, "application/jsonl"),
 }
+
+
+class ExportOptions(BaseModel):
+    """How one run is written. fields keeps only those keys, in that order, in every format.
+    envelope and pretty only apply to JSON, and naming either with another format is refused."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    format: Literal[tuple(EXPORT_FORMATS)]
+    fields: (
+        tuple[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)], ...] | None
+    ) = None
+    envelope: bool = False
+    pretty: bool = True
+
+    @field_validator("fields", mode="before")
+    @classmethod
+    def split_comma_separated_fields(cls, fields):
+        return fields.split(",") if isinstance(fields, str) else fields
+
+    @field_validator("fields")
+    @classmethod
+    def refuse_repeated_fields(cls, fields):
+        if fields is not None and len(set(fields)) != len(fields):
+            raise ValueError("a field is named twice")
+        return fields
+
+    @model_validator(mode="after")
+    def refuse_json_options_on_other_formats(self):
+        json_only_options = sorted({"envelope", "pretty"} & self.model_fields_set)
+        if json_only_options and self.format != "json":
+            raise ValueError(f"{' and '.join(json_only_options)} can only be used with JSON")
+        return self
+
+
+def records_with_fields(records: list[dict], field_names: tuple[str, ...]) -> list[dict]:
+    """A record lacking one of the fields reads "", as a CSV cell and a table column already do."""
+    return [
+        {field_name: record.get(field_name, "") for field_name in field_names} for record in records
+    ]
+
+
+def export_text(records: list[dict], export_options: ExportOptions, run_details: dict) -> str:
+    """run_details are the envelope's keys besides items_count and records; only JSON with
+    envelope reads them."""
+    if export_options.fields is not None:
+        records = records_with_fields(records, export_options.fields)
+    if export_options.format == "json" and export_options.envelope:
+        envelope = {**run_details, "items_count": len(records), "records": records}
+        return records_as_json(envelope, export_options.pretty)
+    if export_options.format == "json":
+        return records_as_json(records, export_options.pretty)
+    return EXPORT_FORMATS[export_options.format].write_records(records)
