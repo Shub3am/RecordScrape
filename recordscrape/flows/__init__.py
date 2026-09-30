@@ -1,6 +1,7 @@
 from recordscrape.flows.flow_file import (
     BrowserSettings,
     FlowFile,
+    RowTable,
     flow_file_json,
     flow_from_recorded_session,
     recorded_by_vpr,
@@ -10,6 +11,7 @@ from recordscrape.flows.flow_file import (
 __all__ = [
     "BrowserSettings",
     "FlowFile",
+    "RowTable",
     "flow_file_json",
     "flow_from_recorded_session",
     "recorded_by_vpr",

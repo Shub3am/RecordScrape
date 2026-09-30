@@ -40,6 +40,89 @@ def app_module(tmp_path, monkeypatch):
     fresh_app_module.browser_worker.stop()
 
 
+CARD_TABLE = {
+    "rowSelector": "li.card",
+    "rowFallbackSelectors": [],
+    "columns": [
+        {"name": "title", "selector": "h2", "fallbackSelectors": [], "attribute": "textContent"},
+        {
+            "name": "price",
+            "selector": ".price",
+            "fallbackSelectors": [],
+            "attribute": "textContent",
+        },
+    ],
+    "pagination": {
+        "mode": "nextButton",
+        "selector": "a.next",
+        "fallbackSelectors": [],
+        "maxPages": 10,
+    },
+}
+
+
+def test_session_edit_renames_it_and_replaces_its_table(app_module):
+    client = app_module.app.test_client()
+    session_id = app_module.storage.create_session(
+        "Cards", "https://shop.example", [], [], CARD_TABLE
+    )
+    edited_table = {
+        **CARD_TABLE,
+        "columns": [{**CARD_TABLE["columns"][0], "name": "product"}],
+        "pagination": {**CARD_TABLE["pagination"], "maxPages": 3},
+    }
+
+    edit_response = client.patch(
+        f"/api/sessions/{session_id}", json={"name": "  Shoe cards ", "table": edited_table}
+    )
+
+    assert edit_response.status_code == 200
+    assert edit_response.json["name"] == "Shoe cards"
+    assert app_module.storage.get_session(session_id)["table"] == edited_table
+
+
+def test_session_edit_of_the_name_only_keeps_the_table(app_module):
+    client = app_module.app.test_client()
+    session_id = app_module.storage.create_session(
+        "Cards", "https://shop.example", [], [], CARD_TABLE
+    )
+
+    client.patch(f"/api/sessions/{session_id}", json={"name": "Renamed"})
+
+    assert app_module.storage.get_session(session_id)["table"] == CARD_TABLE
+
+
+@pytest.mark.parametrize(
+    "session_changes",
+    [
+        {"name": " "},
+        {"name": None},
+        {"table": None},
+        {"table": {**CARD_TABLE, "columns": [CARD_TABLE["columns"][0]] * 2}},
+        {"table": {**CARD_TABLE, "pagination": {**CARD_TABLE["pagination"], "maxPages": 0}}},
+        {"url": "https://other.example"},
+    ],
+)
+def test_invalid_session_edit_is_refused_and_changes_nothing(app_module, session_changes):
+    client = app_module.app.test_client()
+    session_id = app_module.storage.create_session(
+        "Cards", "https://shop.example", [], [], CARD_TABLE
+    )
+
+    edit_response = client.patch(f"/api/sessions/{session_id}", json=session_changes)
+
+    assert edit_response.status_code == 400
+    assert edit_response.json["error"].startswith("Invalid session changes")
+    assert app_module.storage.get_session(session_id)["name"] == "Cards"
+    assert app_module.storage.get_session(session_id)["table"] == CARD_TABLE
+
+
+def test_editing_a_missing_session_is_not_found(app_module):
+    edit_response = app_module.app.test_client().patch("/api/sessions/1", json={"name": "Cards"})
+
+    assert edit_response.status_code == 404
+
+
 def test_deleting_session_removes_its_scheduled_jobs(app_module):
     client = app_module.app.test_client()
     session_id = app_module.storage.create_session("Demo", "https://example.com", [])
