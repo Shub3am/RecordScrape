@@ -470,8 +470,27 @@ def get_status():
         "recording": current_recorder is not None,
         "sessions_count": len(storage.get_all_sessions()),
         "schedules_count": len(storage.get_all_schedules()),
-        "scheduler_running": scheduler.scheduler.running
+        "scheduler_running": scheduler.scheduler.running,
+        "last_24_hours": storage.get_run_stats(since_hours=24)
     })
+
+
+@app.route('/api/runs', methods=['GET'])
+def get_runs():
+    """The newest runs across all sessions, without their data."""
+    limit = request.args.get('limit', 50, type=int)
+    return jsonify(storage.get_run_summaries(limit))
+
+
+@app.route('/healthz', methods=['GET'])
+def get_health():
+    """For load balancers and container health checks, so it needs no token and reveals only
+    whether scheduled runs can happen. 503 when the scheduler or the browser worker has stopped."""
+    health = {
+        "scheduler_running": scheduler.scheduler.running,
+        "browser_worker_running": browser_worker.is_running(),
+    }
+    return jsonify(health), 200 if all(health.values()) else 503
 
 
 # ==================== ERROR HANDLERS ====================

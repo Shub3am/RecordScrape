@@ -33,6 +33,9 @@ class BrowserWorker:
         """Schedule a coroutine on the worker loop and return a future the caller can wait on."""
         return asyncio.run_coroutine_threadsafe(coroutine, self._loop)
 
+    def is_running(self) -> bool:
+        return self._thread.is_alive()
+
     def stop(self) -> None:
         """Cancel every running coroutine so its cleanup runs, then end the worker thread."""
         asyncio.run_coroutine_threadsafe(self._cancel_running_tasks(), self._loop).result()

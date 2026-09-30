@@ -177,6 +177,35 @@ def test_api_with_a_token_serves_requests_carrying_it(app_module):
     assert dashboard_response.status_code == 200
 
 
+def test_health_check_needs_no_token_and_fails_once_the_worker_stops(app_module):
+    app_module.SERVER_SETTINGS = dataclasses.replace(app_module.SERVER_SETTINGS, api_token="s3cret")
+    client = app_module.app.test_client()
+
+    healthy_response = client.get("/healthz")
+    app_module.browser_worker.stop()
+    unhealthy_response = client.get("/healthz")
+    app_module.browser_worker = app_module.BrowserWorker()
+
+    assert healthy_response.status_code == 200
+    assert healthy_response.json == {"scheduler_running": True, "browser_worker_running": True}
+    assert unhealthy_response.status_code == 503
+    assert unhealthy_response.json["browser_worker_running"] is False
+
+
+def test_runs_list_and_status_report_recent_runs(app_module):
+    client = app_module.app.test_client()
+    session_id = app_module.storage.create_session("Cards", "https://shop.example", [])
+    app_module.storage.save_run(session_id, [{"name": "Shoe"}, {"name": "Hat"}])
+    failed_id = app_module.storage.save_run(session_id, [], status="failed", error="Timeout")
+
+    runs = client.get("/api/runs?limit=1").json
+    recent_stats = client.get("/api/status").json["last_24_hours"]
+
+    assert [run["id"] for run in runs] == [failed_id]
+    assert "data" not in runs[0]
+    assert recent_stats == {"runs": 2, "failed_runs": 1, "items_extracted": 2}
+
+
 def test_the_database_lives_in_the_configured_data_dir(app_module, tmp_path):
     assert (tmp_path / "data" / "scraper.db").exists()
     assert not (tmp_path / "scraper.db").exists()
