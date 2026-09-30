@@ -1,6 +1,6 @@
 [project]
 name = "recordscrape"
-version = "1.0.0"
+version = "1.1.0"
 description = "Record a browser session once, then scrape it on a schedule."
 readme = "README.md"
 license = "MIT"
