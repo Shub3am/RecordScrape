@@ -6,11 +6,12 @@ A powerful visual browser automation platform for recording interactions and aut
 
 - 🎥 **Visual Recording**: Record your browser interactions in real-time
 - 🎯 **Element Selection**: Visually select DOM elements for data extraction
-- 🔄 **Automated Replay**: Repeat the recorded clicks, typing and scrolling, visible or headless, then re-extract the selected elements
+- 🔄 **Automated Replay**: Repeat the recorded clicks, typing and scrolling, visible or headless, with per-run page, scroll and row limits
 - 📄 **Flow Files**: Export a session as a JSON file, edit or share it, and import it back
-- 💾 **Data Export**: Download any run's extracted data as CSV, JSON or JSONL
+- 💾 **Data Export**: Download any run as CSV, JSON or JSONL, with chosen fields, an optional run envelope and compact or pretty JSON
+- 🔌 **Latest Data API**: Pull a session's newest successful run as JSON from any other tool
 - ⏰ **Scheduling**: Run a session every N minutes
-- 📊 **Dashboard**: Web interface for managing sessions, schedules and extracted data
+- 📊 **Control Dashboard**: Overview of the last 24 hours, every run with its status, duration and error, a run viewer with table and JSON tabs, and session editing
 
 > Sessions recorded before the Playwright recorder only reopen their URL.
 
@@ -108,19 +109,30 @@ Recording opens a browser window on the machine running the server, so record on
 
 ### Docker
 
+Every release publishes an image for linux/amd64 and linux/arm64 to the GitHub Container Registry:
+
 ```bash
-docker build -t recordscrape .
 docker run -d --name recordscrape -p 5001:5001 \
   -e RECORDSCRAPE_TOKEN=your-token \
   -v recordscrape-data:/data \
-  recordscrape
+  ghcr.io/shub3am/recordscrape:latest
 ```
+
+Pin a version with a tag such as `ghcr.io/shub3am/recordscrape:1.1.0`, or build it yourself with `docker build -t recordscrape .`.
 
 - The image is built on Microsoft's Playwright image, which carries Chromium and its system libraries. Chromium and Patchright work out of the box.
 - It listens on `0.0.0.0:5001`, so `RECORDSCRAPE_TOKEN` is required. The database lives in the `/data` volume.
-- Runs with **"Run headless"** unticked open their window on a virtual screen (Xvfb), so sites that behave differently in headless mode still work.
+- Replays with **"Headless"** unticked open their window on a virtual screen (Xvfb), so sites that behave differently in headless mode still work.
 - Proxy credentials referenced as `${PROXY_PASS}` are read from the container's environment: pass them with `-e PROXY_PASS=...`.
 - CloakBrowser is not in the image by default, because its binary license forbids redistribution. Build your own image with it: `docker build --build-arg WITH_CLOAKBROWSER=1 -t recordscrape .`, and pass `-e CLOAKBROWSER_LICENSE_KEY=...` if your build needs one. Do not push that image to a public registry.
+
+### Health check
+
+`GET /healthz` needs no token and answers `200` with `{"scheduler_running": true, "browser_worker_running": true}`, or `503` once either has stopped, so a load balancer or container orchestrator can restart the server. It reveals nothing about sessions or data.
+
+## Releases
+
+Each version tag (`v1.1.0`) publishes a [GitHub release](https://github.com/Shub3am/RecordScrape/releases) with generated notes and the container image above, tagged `1.1.0`, `1.1` and `latest`. The image never contains CloakBrowser.
 
 ## Running tests
 
@@ -135,7 +147,7 @@ uv run pytest
 
 ### Recording a Session
 
-1. In **"Record New Session"**, enter the URL you want to scrape, optionally a session name (it defaults to the site's host name), and click **"Start Recording"**
+1. In the **Record** view, enter the URL you want to scrape, optionally a session name (it defaults to the site's host name), and click **"Start Recording"**
 2. A browser window opens on that URL (see [Stealth Browsers and Proxies](#stealth-browsers-and-proxies) to pick which one)
 3. Click **"Select Elements"** and click the elements you want to extract, then **"Done"** in the overlay
 4. For a list of items, click **"Select Rows"** instead (see below)
@@ -149,7 +161,7 @@ uv run pytest
 
 ![Row picker: every quote outlined as a row, the quote text and author outlined as columns](docs/images/row-picker.png)
 
-Each run then saves one record per row, such as `{"name": "Shoe", "price": "$40"}`. A column is named after the clicked element's first CSS class; rename it in an exported flow file. Elements picked with **"Select Elements"** in the same session are added to every row, keyed by their selector.
+Each run then saves one record per row, such as `{"name": "Shoe", "price": "$40"}`. A column is named after the clicked element's first CSS class; rename or remove it with **"Edit"** on the session. Elements picked with **"Select Elements"** in the same session are added to every row, keyed by their selector.
 
 ### Following a List Across Pages
 
@@ -158,30 +170,54 @@ After picking rows, tell RecordScrape how the list continues:
 - **"Select Next Button"**, then click the page's Next button. Each run reads the rows, clicks Next, and reads again, until the button is gone or disabled, a click no longer changes the rows, or 10 pages are read.
 - **"Infinite Scroll"** for a feed that loads more as you scroll. Each run scrolls to the bottom until no new rows appear, or 10 scrolls are done, then reads every row.
 
-The last choice wins. Elements picked with **"Select Elements"** are read on the first page only. To change the 10-page or 10-scroll limit, export the flow, edit `maxPages` or `maxScrolls` under `table.pagination`, and import it.
+The last choice wins. Elements picked with **"Select Elements"** are read on the first page only. Change the 10-page or 10-scroll limit with **"Edit"** on the session, or for a single run in the replay dialog.
 
 ### Replaying & Extracting Data
 
-1. Find your session in the **"Saved Sessions"** section
-2. Click **"Replay"** to run it once manually
-3. Extracted data appears in **"Recent Data Extractions"**
-4. Click **"JSON"**, **"CSV"** or **"JSONL"** on a run to download its data
+1. In the **Sessions** view, click **"Replay"** on a session
+2. Pick the run options and click **"Run"**:
+   - **Headless** runs without a browser window
+   - **Max pages** or **Max scrolls** overrides the session's pagination limit for this run only
+   - **Max rows** keeps at most that many records
+3. The run appears in the **Runs** view with its status, item count, duration and trigger. A failed run keeps its error
+4. Click a run to open it: the **Table** and **JSON** tabs show its records, and **Copy** puts the JSON on the clipboard
+5. Under **Export**, pick the format and fields, and for JSON whether to wrap it in run details and indent it, then **"Download"**
 
 <img src="docs/images/extracted-data.png" alt="A run's card: 100 items, each with author and text, and JSON, CSV and JSONL download buttons" width="380">
 
 A CSV has one column per field and one line per row or picked value. A value that a spreadsheet would run as a formula (one starting with `=`, `+`, `-` or `@` that is not a plain number) gets a leading `'` so it opens as text. JSON and JSONL keep every value exactly as scraped.
 
+### Pulling the Latest Data from Other Tools
+
+`GET /api/sessions/<id>/data/latest` returns a session's newest successful run, as JSON unless you ask for another format. A failed run never replaces it, so a scheduled scrape that hits a down site keeps serving the last good records.
+
+```bash
+curl -H "Authorization: Bearer your-token" \
+  "http://localhost:5001/api/sessions/1/data/latest?fields=author,text&envelope=1"
+```
+
+It takes the same options as a download:
+
+| Option | Formats | What it does |
+|--------|---------|--------------|
+| `format` | all | `json` (the default here), `csv` or `jsonl` |
+| `fields` | all | Comma-separated keys to keep, in that order. A record without one reads `""` |
+| `envelope` | JSON | `1` wraps the records as `{"session", "run_id", "extracted_at", "items_count", "records"}` |
+| `pretty` | JSON | `0` writes one line with no spaces. Indented by default |
+
+An unknown option, or `envelope` or `pretty` with CSV or JSONL, is refused with a `400` rather than ignored. `GET /api/data/<run id>/export` takes the same options and downloads one run as a file.
+
 ### Exporting and Importing Flows
 
-1. Click **"Export"** on a saved session to download it as a `.flow.json` file
+1. Click **"Export flow"** on a session to download it as a `.flow.json` file
 2. Edit it by hand if you want: fix a selector, change a typed value, remove a step
-3. Click **"Import Flow"** above the saved sessions and pick the file to save it as a new session
+3. Click **"Import Flow"** in the **Sessions** view and pick the file to save it as a new session
 
 A flow file holds the start URL, the recorded steps (`click`, `input`, `scroll`), the picked elements and, if set, the row `table` and the `browser` settings. Unknown keys and files from a newer format version are refused with an error instead of being half loaded.
 
 ### Stealth Browsers and Proxies
 
-Next to the URL box, pick the browser a session records and runs on, and an optional proxy:
+In the **Record** view, pick the browser a session records and runs on, and an optional proxy:
 
 ![Record New Session with CloakBrowser picked, human-like input ticked and a proxy URL using environment variables](docs/images/browser-settings.png)
 
@@ -201,10 +237,10 @@ The browser settings belong to the session: recording, manual replays and schedu
 
 ### Scheduling Periodic Scraping
 
-1. Click **"Schedule"** on any saved session
-2. Enter the frequency in minutes
-3. The scheduler automatically runs the session and saves data
-4. View scheduled jobs in the **"Schedules"** section
+1. Click **"Schedule"** on a session
+2. Enter how often to run it, in minutes, and save
+3. Each scheduled run is headless, uses the session's own limits, and shows up in the **Runs** view with the trigger `schedule`
+4. Pause, resume or delete schedules in the **Schedules** view
 
 ## Project Structure
 
@@ -213,13 +249,16 @@ RecordScrape/
 ├── app.py                 # Flask application & API
 ├── recordscrape/          # Playwright engine
 │   ├── worker/            # The one thread all browser work runs on
-│   ├── browsers/          # Chromium and Patchright backends
+│   ├── browsers/          # Chromium, Patchright and CloakBrowser backends
+│   ├── proxies/           # Proxy URL parsing and env expansion
 │   ├── recorder/          # Session recording and element picking
 │   ├── flows/             # The flow file format for export and import
-│   └── runner/            # Re-extracts picked elements
+│   ├── runner/            # Replays a session and extracts its data
+│   ├── exporters/         # CSV, JSON and JSONL writers
+│   └── server_settings/   # Host, port, data dir and token from env
 ├── vpr/                   # Storage and scheduling
 │   ├── __init__.py
-│   ├── storage.py         # Database management
+│   ├── storage.py         # Sessions, runs and schedules in SQLite
 │   └── scheduler.py       # Background job scheduler
 ├── static/
 │   ├── css/
