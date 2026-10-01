@@ -17,11 +17,11 @@ A powerful visual browser automation platform for recording interactions and aut
 
 ## 🎥 Demo
 
-![Recording quotes.toscrape.com: pick rows and the Next button, replay across 10 pages, schedule it](docs/images/demo.gif)
+![Recording quotes.toscrape.com in the control dashboard: pick rows and the Next button, replay across 10 pages, view and export the JSON, schedule it](docs/images/demo.gif)
 
 One recording on [quotes.toscrape.com](https://quotes.toscrape.com/), a site built for scraping practice: two clicks pick the quotes as rows, one more adds the author column, and the Next button makes every run read all 10 pages, 100 records.
 
-▶ [Full walkthrough video (70 s)](docs/images/demo.mp4): record, pick rows and the Next button, save, replay headless, schedule and download the CSV.
+▶ [Full walkthrough video (75 s)](docs/images/demo.mp4): record, pick rows and the Next button, save, replay with run options, open the run as a table and as JSON, export JSON with the run's details, rename a column, schedule it and check the overview.
 
 ▶ Earlier video:  
 https://twitter.com/Shubh3m/status/2027349108256887131
@@ -29,9 +29,9 @@ https://twitter.com/Shubh3m/status/2027349108256887131
 Record once → Automate forever.
 
 <details>
-<summary>The whole dashboard after that run</summary>
+<summary>The overview after that run</summary>
 
-![RecordScrape dashboard with a saved session, its schedule and 100 extracted records](docs/images/dashboard.png)
+![RecordScrape overview: one session, one schedule, one successful run of 100 items in the last 24 hours](docs/images/dashboard.png)
 
 </details>
 
@@ -183,7 +183,7 @@ The last choice wins. Elements picked with **"Select Elements"** are read on the
 4. Click a run to open it: the **Table** and **JSON** tabs show its records, and **Copy** puts the JSON on the clipboard
 5. Under **Export**, pick the format and fields, and for JSON whether to wrap it in run details and indent it, then **"Download"**
 
-<img src="docs/images/extracted-data.png" alt="A run's card: 100 items, each with author and text, and JSON, CSV and JSONL download buttons" width="380">
+<img src="docs/images/extracted-data.png" alt="The run viewer on its JSON tab: 100 quotes with text and author, and the export panel with format, fields, run details and pretty options" width="640">
 
 A CSV has one column per field and one line per row or picked value. A value that a spreadsheet would run as a formula (one starting with `=`, `+`, `-` or `@` that is not a plain number) gets a leading `'` so it opens as text. JSON and JSONL keep every value exactly as scraped.
 
@@ -219,7 +219,7 @@ A flow file holds the start URL, the recorded steps (`click`, `input`, `scroll`)
 
 In the **Record** view, pick the browser a session records and runs on, and an optional proxy:
 
-![Record New Session with CloakBrowser picked, human-like input ticked and a proxy URL using environment variables](docs/images/browser-settings.png)
+![The Record view with CloakBrowser picked, human-like input ticked and a proxy URL using environment variables](docs/images/browser-settings.png)
 
 | Browser | What it is | Install |
 |---------|------------|---------|
