@@ -6,15 +6,14 @@ Manages periodic execution of scraping sessions using APScheduler.
 import dataclasses
 import logging
 import time
-from datetime import datetime, timedelta
-from typing import Optional
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+
 from recordscrape.browsers import BrowserConfig
 from recordscrape.runner import SESSION_OWN_LIMITS, RunOptions, run_session
 from recordscrape.worker import BrowserWorker
 from vpr.storage import StorageManager
-
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,9 +22,10 @@ logger = logging.getLogger(__name__)
 
 class ScraperScheduler:
     """Manages scheduled scraping jobs."""
-    
-    def __init__(self, storage: StorageManager, browser_worker: BrowserWorker,
-                 browser_config: BrowserConfig):
+
+    def __init__(
+        self, storage: StorageManager, browser_worker: BrowserWorker, browser_config: BrowserConfig
+    ):
         """Initialize the scheduler. Each run uses browser_config with its own headless choice,
         and with the session's browser settings in place of its backend, proxy and humanize."""
         self.storage = storage
@@ -34,31 +34,28 @@ class ScraperScheduler:
         self.scheduler = BackgroundScheduler()
         self.scheduler.start()
         self.jobs = {}  # Map schedule_id to job_id
-        
+
         # Load existing schedules
         self._load_schedules()
-    
+
     def _load_schedules(self):
         """Load and activate all enabled schedules from database."""
         schedules = self.storage.get_all_schedules()
         for schedule in schedules:
             if schedule["enabled"]:
                 self.add_schedule(
-                    schedule["id"],
-                    schedule["session_id"],
-                    schedule["frequency_minutes"]
+                    schedule["id"], schedule["session_id"], schedule["frequency_minutes"]
                 )
-    
-    def add_schedule(self, schedule_id: int, session_id: int, 
-                    frequency_minutes: int) -> bool:
+
+    def add_schedule(self, schedule_id: int, session_id: int, frequency_minutes: int) -> bool:
         """
         Add a new scheduled job.
-        
+
         Args:
             schedule_id: ID of the schedule in database
             session_id: ID of the session to replay
             frequency_minutes: How often to run (in minutes)
-            
+
         Returns:
             True if successful, False otherwise
         """
@@ -66,10 +63,10 @@ class ScraperScheduler:
             # Remove existing job if any
             if schedule_id in self.jobs:
                 self.remove_schedule(schedule_id)
-            
+
             # Create trigger
             trigger = IntervalTrigger(minutes=frequency_minutes)
-            
+
             # Add job
             job = self.scheduler.add_job(
                 func=self._run_scraping_job,
@@ -77,19 +74,21 @@ class ScraperScheduler:
                 args=[session_id, schedule_id],
                 id=f"schedule_{schedule_id}",
                 name=f"Scrape Session {session_id}",
-                replace_existing=True
+                replace_existing=True,
             )
-            
+
             self.jobs[schedule_id] = job.id
-            logger.info(f"Added schedule {schedule_id} for session {session_id} "
-                       f"(every {frequency_minutes} minutes)")
-            
+            logger.info(
+                f"Added schedule {schedule_id} for session {session_id} "
+                f"(every {frequency_minutes} minutes)"
+            )
+
             return True
-            
-        except Exception as e:
-            logger.error(f"Error adding schedule: {e}")
+
+        except Exception:
+            logger.exception("Error adding schedule")
             return False
-    
+
     def remove_schedule(self, schedule_id: int) -> bool:
         """Remove a scheduled job."""
         try:
@@ -100,10 +99,10 @@ class ScraperScheduler:
                 logger.info(f"Removed schedule {schedule_id}")
                 return True
             return False
-        except Exception as e:
-            logger.error(f"Error removing schedule: {e}")
+        except Exception:
+            logger.exception("Error removing schedule")
             return False
-    
+
     def remove_session_schedules(self, session_id: int):
         """Remove the scheduled jobs of every schedule that replays a session."""
         for schedule_id in self.storage.get_schedule_ids_for_session(session_id):
@@ -119,10 +118,10 @@ class ScraperScheduler:
                 logger.info(f"Paused schedule {schedule_id}")
                 return True
             return False
-        except Exception as e:
-            logger.error(f"Error pausing schedule: {e}")
+        except Exception:
+            logger.exception("Error pausing schedule")
             return False
-    
+
     def resume_schedule(self, schedule_id: int) -> bool:
         """Resume a paused scheduled job."""
         try:
@@ -133,79 +132,84 @@ class ScraperScheduler:
                 logger.info(f"Resumed schedule {schedule_id}")
                 return True
             return False
-        except Exception as e:
-            logger.error(f"Error resuming schedule: {e}")
+        except Exception:
+            logger.exception("Error resuming schedule")
             return False
-    
+
     def _run_scraping_job(self, session_id: int, schedule_id: int):
         """
         Execute a scraping job.
-        
+
         Args:
             session_id: ID of session to replay
             schedule_id: ID of the schedule
         """
         logger.info(f"Running scheduled scrape for session {session_id}")
-        
+
         try:
             # Get session data
             session = self.storage.get_session(session_id)
             if not session:
                 logger.error(f"Session {session_id} not found")
                 return
-            
+
             result = self._run_and_record(
                 session, headless=True, triggered_by="schedule", run_options=SESSION_OWN_LIMITS
             )
-            
+
             if result.get("success"):
-                logger.info(f"Extracted {result.get('items_count', 0)} items, "
-                          f"saved as data ID {result['data_id']}")
+                logger.info(
+                    f"Extracted {result.get('items_count', 0)} items, "
+                    f"saved as data ID {result['data_id']}"
+                )
             else:
                 logger.error(f"Scraping failed: {result.get('error', 'Unknown error')}")
-            
+
             # Update next run time
             self.storage.update_schedule_next_run(schedule_id)
-            
-        except Exception as e:
-            logger.error(f"Error in scraping job: {e}")
-    
+
+        except Exception:
+            logger.exception("Error in scraping job")
+
     def run_manual(self, session_id: int, headless: bool, run_options: RunOptions) -> dict:
         """
         Manually trigger a scraping job (not scheduled).
-        
+
         Args:
             session_id: ID of session to replay
             headless: Whether to run in headless mode
             run_options: Limits this run sets over the session's own
-            
+
         Returns:
             Result dictionary from run_session
         """
         mode = "headless" if headless else "visible browser"
         logger.info(f"Running manual scrape for session {session_id} in {mode} mode")
-        
+
         try:
             # Get session data
             session = self.storage.get_session(session_id)
             if not session:
                 return {"success": False, "error": "Session not found"}
-            
+
             result = self._run_and_record(
                 session, headless=headless, triggered_by="manual", run_options=run_options
             )
-            
+
             if result.get("success"):
-                logger.info(f"Manual scrape completed, extracted {result.get('items_count', 0)} items")
-            
+                logger.info(
+                    f"Manual scrape completed, extracted {result.get('items_count', 0)} items"
+                )
+
             return result
-            
+
         except Exception as e:
-            logger.error(f"Error in manual scrape: {e}")
+            logger.exception("Error in manual scrape")
             return {"success": False, "error": str(e)}
-    
-    def _run_and_record(self, session: dict, headless: bool, triggered_by: str,
-                        run_options: RunOptions) -> dict:
+
+    def _run_and_record(
+        self, session: dict, headless: bool, triggered_by: str, run_options: RunOptions
+    ) -> dict:
         """Runs a session, saves the run whether it succeeded or failed, and returns the run's
         result with its data_id and duration_ms."""
         run_started = time.monotonic()
@@ -232,7 +236,7 @@ class ScraperScheduler:
             run_session(run_browser_config, session, run_options)
         ).result()
 
-    def get_job_status(self, schedule_id: int) -> Optional[dict]:
+    def get_job_status(self, schedule_id: int) -> dict | None:
         """Get status of a scheduled job."""
         try:
             if schedule_id in self.jobs:
@@ -243,13 +247,13 @@ class ScraperScheduler:
                         "id": job.id,
                         "name": job.name,
                         "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
-                        "pending": job.pending
+                        "pending": job.pending,
                     }
             return None
-        except Exception as e:
-            logger.error(f"Error getting job status: {e}")
+        except Exception:
+            logger.exception("Error getting job status")
             return None
-    
+
     def shutdown(self):
         """Shutdown the scheduler."""
         logger.info("Shutting down scheduler")
