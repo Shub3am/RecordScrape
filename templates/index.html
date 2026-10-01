@@ -4,183 +4,469 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RecordScrape - Visual Browser Automation</title>
+    <meta name="color-scheme" content="light dark">
+    <title>RecordScrape</title>
     <meta name="description" content="Record browser interactions and automate data extraction with RecordScrape">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234f46e5'/%3E%3Ccircle cx='12' cy='12' r='5' fill='white'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
 <body>
-    <header class="main-header">
-        <div class="header-content">
-            <div class="logo">
-                <span class="logo-icon">🎬</span>
-                <h1 class="logo-text">RecordScrape</h1>
-            </div>
-            <p class="subtitle">Visual Browser Automation Platform</p>
-            <p class="tagline">Record, Replay, and Automate Data Extraction</p>
-        </div>
-    </header>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="brand" href="#overview">
+                <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+                    <rect width="24" height="24" rx="6"></rect>
+                    <circle cx="12" cy="12" r="5"></circle>
+                </svg>
+                <span class="brand-name">RecordScrape</span>
+            </a>
 
-    <div class="container">
-        <!-- Recording Section -->
-        <section class="section">
-            <div class="section-header">
-                <h2 class="section-title">Record New Session</h2>
-                <div class="status-indicator">
-                    <span class="status-dot idle" id="status-dot"></span>
-                    <span id="status-text">Idle</span>
+            <nav class="nav" aria-label="Main">
+                <a class="nav-link" id="nav-overview" href="#overview" data-view="overview">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+                    <span>Overview</span>
+                </a>
+                <a class="nav-link" id="nav-record" href="#record" data-view="record">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" class="icon-fill"/></svg>
+                    <span>Record</span>
+                </a>
+                <a class="nav-link" id="nav-sessions" href="#sessions" data-view="sessions">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/></svg>
+                    <span>Sessions</span>
+                </a>
+                <a class="nav-link" id="nav-runs" href="#runs" data-view="runs">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+                    <span>Runs</span>
+                </a>
+                <a class="nav-link" id="nav-schedules" href="#schedules" data-view="schedules">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                    <span>Schedules</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="health" id="health-indicator" data-health="unknown" title="Server health from /healthz">
+                    <span class="health-dot" aria-hidden="true"></span>
+                    <span id="health-text">Checking</span>
                 </div>
             </div>
+        </aside>
 
-            <div class="recording-controls">
-                <div class="input-group">
-                    <label for="url-input">Target URL</label>
-                    <input type="url" id="url-input" placeholder="https://example.com" autocomplete="url">
+        <main class="main">
+            <!-- Overview -->
+            <section class="view" id="view-overview" data-view="overview" aria-labelledby="overview-title">
+                <header class="view-header">
+                    <div>
+                        <h1 class="view-title" id="overview-title">Overview</h1>
+                        <p class="view-subtitle">Your sessions, schedules and the last 24 hours of runs.</p>
+                    </div>
+                </header>
+
+                <div class="stat-grid">
+                    <div class="stat-tile">
+                        <span class="stat-label">Sessions</span>
+                        <span class="stat-value" id="sessions-count">0</span>
+                    </div>
+                    <div class="stat-tile">
+                        <span class="stat-label">Schedules</span>
+                        <span class="stat-value" id="schedules-count">0</span>
+                    </div>
+                    <div class="stat-tile">
+                        <span class="stat-label">Runs 24h</span>
+                        <span class="stat-value" id="runs-24h-count">0</span>
+                    </div>
+                    <div class="stat-tile" id="failed-24h-tile">
+                        <span class="stat-label">Failed 24h</span>
+                        <span class="stat-value" id="failed-24h-count">0</span>
+                    </div>
+                    <div class="stat-tile">
+                        <span class="stat-label">Items 24h</span>
+                        <span class="stat-value" id="items-24h-count">0</span>
+                    </div>
                 </div>
-                <div class="input-group input-group-narrow">
-                    <label for="session-name-input">Session name (optional)</label>
-                    <input type="text" id="session-name-input" placeholder="Site's host name" autocomplete="off">
+
+                <div class="overview-grid">
+                    <section class="panel">
+                        <header class="panel-header">
+                            <h2 class="panel-title">Latest runs</h2>
+                            <a class="btn btn-ghost btn-small" href="#runs">All runs</a>
+                        </header>
+                        <div class="table-scroll">
+                            <table class="data-table runs-table">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Session</th>
+                                        <th class="col-trigger">Trigger</th>
+                                        <th class="num">Items</th>
+                                        <th class="num col-duration">Duration</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="overview-runs-body">
+                                    <tr><td colspan="6" class="table-note">Loading runs...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <header class="panel-header">
+                            <h2 class="panel-title">System</h2>
+                        </header>
+                        <dl class="fact-list">
+                            <div>
+                                <dt>Recorder</dt>
+                                <dd id="overview-recording-text">Idle</dd>
+                            </div>
+                            <div>
+                                <dt>Scheduler</dt>
+                                <dd id="overview-scheduler-text">Checking</dd>
+                            </div>
+                        </dl>
+                        <a class="btn btn-secondary btn-small" href="#record">Record a session</a>
+                    </section>
                 </div>
-                <div class="input-group input-group-narrow">
-                    <label for="backend-select">Browser</label>
-                    <select id="backend-select">
-                        <option value="chromium">Chromium</option>
-                        <option value="patchright">Patchright (stealth)</option>
-                        <option value="cloakbrowser">CloakBrowser (stealth, records on Patchright)</option>
-                    </select>
+            </section>
+
+            <!-- Record -->
+            <section class="view" id="view-record" data-view="record" aria-labelledby="record-title" hidden>
+                <header class="view-header">
+                    <div>
+                        <h1 class="view-title" id="record-title">Record</h1>
+                        <p class="view-subtitle">Open a site in a browser window, then pick the data to extract.</p>
+                    </div>
+                    <div class="status-indicator">
+                        <span class="status-dot idle" id="status-dot"></span>
+                        <span id="status-text">Idle</span>
+                    </div>
+                </header>
+
+                <section class="panel">
+                    <div class="form-grid">
+                        <div class="field field-wide">
+                            <label for="url-input">Target URL</label>
+                            <input type="url" id="url-input" placeholder="https://example.com" autocomplete="url">
+                        </div>
+                        <div class="field">
+                            <label for="session-name-input">Session name (optional)</label>
+                            <input type="text" id="session-name-input" placeholder="Site's host name" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label for="backend-select">Browser</label>
+                            <select id="backend-select">
+                                <option value="chromium">Chromium</option>
+                                <option value="patchright">Patchright (stealth)</option>
+                                <option value="cloakbrowser">CloakBrowser (stealth, records on Patchright)</option>
+                            </select>
+                        </div>
+                        <div class="field field-wide">
+                            <label for="proxy-input">Proxy (optional)</label>
+                            <input type="text" id="proxy-input" placeholder="http://${PROXY_USER}:${PROXY_PASS}@host:8080" autocomplete="off" spellcheck="false">
+                        </div>
+                        <label class="checkbox-field field-wide">
+                            <input type="checkbox" id="humanize-checkbox" disabled>
+                            <span>Human-like input (CloakBrowser only)</span>
+                        </label>
+                    </div>
+
+                    <div class="recording-actions">
+                        <button type="button" id="start-recording-btn" class="btn btn-primary">
+                            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6" class="icon-fill"/></svg>
+                            Start Recording
+                        </button>
+                        <button type="button" id="activate-selector-btn" class="btn btn-secondary" disabled>
+                            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l7 17 2.5-7L21 11.5 4 4Z"/></svg>
+                            Select Elements
+                        </button>
+                        <button type="button" id="activate-row-picker-btn" class="btn btn-secondary" disabled>
+                            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                            Select Rows
+                        </button>
+                        <button type="button" id="activate-next-button-picker-btn" class="btn btn-secondary" disabled>
+                            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 6 6-6 6M13 6l6 6-6 6"/></svg>
+                            Select Next Button
+                        </button>
+                        <button type="button" id="use-infinite-scroll-btn" class="btn btn-secondary" disabled>
+                            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v14M6 12l6 6 6-6"/></svg>
+                            Infinite Scroll
+                        </button>
+                        <button type="button" id="stop-recording-btn" class="btn btn-danger" disabled>
+                            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" class="icon-fill"/></svg>
+                            Stop &amp; Save
+                        </button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <header class="panel-header">
+                        <h2 class="panel-title">How to record</h2>
+                    </header>
+                    <ol class="steps">
+                        <li>Enter the URL you want to scrape.</li>
+                        <li>Click "Start Recording" and a browser window opens.</li>
+                        <li>Perform your actions: navigate, click, type, scroll.</li>
+                        <li>Click "Select Elements" to mark data to extract.</li>
+                        <li>For a list, click "Select Rows", click the same field in two rows, then other fields in any row.</li>
+                        <li>If the list spans pages, click "Select Next Button" and click the page's Next button, or click "Infinite Scroll" for a feed that loads more as you scroll.</li>
+                        <li>Click "Stop &amp; Save" when done.</li>
+                    </ol>
+                </section>
+            </section>
+
+            <!-- Sessions -->
+            <section class="view" id="view-sessions" data-view="sessions" aria-labelledby="sessions-title" hidden>
+                <header class="view-header">
+                    <div>
+                        <h1 class="view-title" id="sessions-title">Sessions</h1>
+                        <p class="view-subtitle">Recorded sessions and imported flows.</p>
+                    </div>
+                    <div class="view-actions">
+                        <label class="btn btn-secondary">
+                            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3M7 10l5 5 5-5M4 17v3h16v-3"/></svg>
+                            Import Flow
+                            <input type="file" id="import-flow-input" accept=".json,application/json" hidden>
+                        </label>
+                        <button type="button" id="refresh-sessions-btn" class="btn btn-ghost">Refresh</button>
+                    </div>
+                </header>
+
+                <div class="session-grid" id="sessions-grid">
+                    <p class="empty-state">Loading sessions...</p>
                 </div>
-                <div class="input-group">
-                    <label for="proxy-input">Proxy (optional)</label>
-                    <input type="text" id="proxy-input" placeholder="http://${PROXY_USER}:${PROXY_PASS}@host:8080" autocomplete="off" spellcheck="false">
-                </div>
-                <label class="humanize-toggle">
-                    <input type="checkbox" id="humanize-checkbox" disabled>
-                    <span>Human-like input (CloakBrowser only)</span>
-                </label>
-            </div>
+            </section>
 
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button id="start-recording-btn" class="btn btn-primary">
-                    🎥 Start Recording
-                </button>
-                <button id="activate-selector-btn" class="btn btn-secondary" disabled>
-                    🎯 Select Elements
-                </button>
-                <button id="activate-row-picker-btn" class="btn btn-secondary" disabled>
-                    📋 Select Rows
-                </button>
-                <button id="activate-next-button-picker-btn" class="btn btn-secondary" disabled>
-                    ⏭️ Select Next Button
-                </button>
-                <button id="use-infinite-scroll-btn" class="btn btn-secondary" disabled>
-                    🔽 Infinite Scroll
-                </button>
-                <button id="stop-recording-btn" class="btn btn-danger" disabled>
-                    ⏹️ Stop & Save
-                </button>
-            </div>
+            <!-- Runs -->
+            <section class="view" id="view-runs" data-view="runs" aria-labelledby="runs-title" hidden>
+                <header class="view-header">
+                    <div>
+                        <h1 class="view-title" id="runs-title">Runs</h1>
+                        <p class="view-subtitle">Every manual and scheduled run, newest first. Click a run to see its records.</p>
+                    </div>
+                    <div class="view-actions">
+                        <button type="button" id="refresh-runs-btn" class="btn btn-ghost">Refresh</button>
+                    </div>
+                </header>
 
-            <div
-                style="margin-top: 20px; padding: 15px; background: var(--bg-dark); border-radius: 8px; border-left: 4px solid var(--primary);">
-                <h4 style="margin-bottom: 10px;">📝 How to use:</h4>
-                <ol style="margin-left: 20px; color: var(--text-secondary); line-height: 1.8;">
-                    <li>Enter the URL you want to scrape</li>
-                    <li>Click "Start Recording" - browser will open</li>
-                    <li>Perform your actions (navigate, click, type, scroll)</li>
-                    <li>Click "Select Elements" to mark data to extract</li>
-                    <li>For a list, click "Select Rows", click the same field in two rows, then other fields in any row</li>
-                    <li>If the list spans pages, click "Select Next Button" and click the page's Next button, or click "Infinite Scroll" for a feed that loads more as you scroll</li>
-                    <li>Click "Stop & Save" when done</li>
-                </ol>
-            </div>
-        </section>
+                <section class="panel panel-flush">
+                    <div class="table-scroll">
+                        <table class="data-table runs-table">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Session</th>
+                                    <th class="col-trigger">Trigger</th>
+                                    <th class="num">Items</th>
+                                    <th class="num col-duration">Duration</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="runs-table-body">
+                                <tr><td colspan="6" class="table-note">Loading runs...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
 
-        <!-- Quick Stats -->
-        <div
-            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 40px;">
-            <div class="card" style="text-align: center;">
-                <div class="stat-value" id="sessions-count">0</div>
-                <div class="stat-label">Total Sessions</div>
-            </div>
-            <div class="card" style="text-align: center;">
-                <div class="stat-value" id="schedules-count">0</div>
-                <div class="stat-label">Active Schedules</div>
-            </div>
-        </div>
+            <!-- Schedules -->
+            <section class="view" id="view-schedules" data-view="schedules" aria-labelledby="schedules-title" hidden>
+                <header class="view-header">
+                    <div>
+                        <h1 class="view-title" id="schedules-title">Schedules</h1>
+                        <p class="view-subtitle">Create a schedule from a session's Schedule action.</p>
+                    </div>
+                    <div class="view-actions">
+                        <button type="button" id="refresh-schedules-btn" class="btn btn-ghost">Refresh</button>
+                    </div>
+                </header>
 
-        <!-- Sessions Section -->
-        <section class="section">
-            <div class="section-header">
-                <h2 class="section-title">Saved Sessions</h2>
-                <div class="card-actions">
-                    <label class="btn btn-secondary btn-small">
-                        📥 Import Flow
-                        <input type="file" id="import-flow-input" accept=".json,application/json" hidden>
-                    </label>
-                    <button class="btn btn-secondary btn-small" onclick="loadSessions()">
-                        🔄 Refresh
-                    </button>
-                </div>
-            </div>
-
-            <div class="grid" id="sessions-grid">
-                <div class="empty-state">
-                    <div class="empty-state-icon">📹</div>
-                    <div class="empty-state-text">Loading sessions...</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Schedules Section -->
-        <section class="section">
-            <div class="section-header">
-                <h2 class="section-title">Schedules</h2>
-                <button class="btn btn-secondary btn-small" onclick="loadSchedules()">
-                    🔄 Refresh
-                </button>
-            </div>
-
-            <div id="schedules-list">
-                <div class="empty-state">
-                    <div class="empty-state-icon">⏰</div>
-                    <div class="empty-state-text">Loading schedules...</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Data Section -->
-        <section class="section" id="data-section">
-            <div class="section-header">
-                <h2 class="section-title">Recent Data Extractions</h2>
-                <button class="btn btn-secondary btn-small" onclick="loadData()">
-                    🔄 Refresh
-                </button>
-            </div>
-
-            <div class="grid" id="data-list">
-                <div class="empty-state">
-                    <div class="empty-state-icon">📊</div>
-                    <div class="empty-state-text">Loading data...</div>
-                </div>
-            </div>
-        </section>
+                <section class="panel panel-flush" id="schedules-list">
+                    <p class="empty-state">Loading schedules...</p>
+                </section>
+            </section>
+        </main>
     </div>
 
-    <footer class="main-footer">
-        <div class="footer-content">
-            <div class="footer-brand">
-                <span class="footer-logo">🎬 RecordScrape</span>
-                <p class="footer-tagline">Automate Your Web Workflows</p>
+    <!-- Replay options -->
+    <dialog class="dialog" id="replay-dialog" aria-labelledby="replay-dialog-title">
+        <form id="replay-form">
+            <header class="dialog-header">
+                <h2 class="dialog-title" id="replay-dialog-title">Replay</h2>
+                <button type="button" class="icon-button" data-close-dialog aria-label="Close">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
+            </header>
+            <div class="dialog-body">
+                <label class="checkbox-field">
+                    <input type="checkbox" id="replay-headless-checkbox">
+                    <span>Headless (faster, no browser window)</span>
+                </label>
+                <div class="field-row">
+                    <div class="field" id="replay-max-pages-field">
+                        <label for="replay-max-pages-input">Max pages</label>
+                        <input type="number" id="replay-max-pages-input" min="1" step="1" inputmode="numeric">
+                    </div>
+                    <div class="field" id="replay-max-scrolls-field">
+                        <label for="replay-max-scrolls-input">Max scrolls</label>
+                        <input type="number" id="replay-max-scrolls-input" min="1" step="1" inputmode="numeric">
+                    </div>
+                    <div class="field">
+                        <label for="replay-max-rows-input">Max rows</label>
+                        <input type="number" id="replay-max-rows-input" min="1" step="1" inputmode="numeric" placeholder="No limit">
+                    </div>
+                </div>
+                <p class="field-hint">Leave a limit empty to keep the session's own. Limits apply to this run only.</p>
+                <div class="result-box" id="replay-result" hidden></div>
             </div>
-            <div class="footer-info">
-                <p>Open source under the MIT License</p>
-                <p class="footer-tech">Powered by Playwright & Flask</p>
-                <div class="footer-links">
-                    <a href="https://github.com/Shub3am/RecordScrape" target="_blank" class="footer-link">GitHub</a>
+            <footer class="dialog-footer">
+                <button type="button" class="btn btn-ghost" data-close-dialog>Close</button>
+                <button type="submit" class="btn btn-primary" id="replay-run-btn" data-idle-label="Run" data-busy-label="Running">
+                    <span class="btn-label">Run</span>
+                </button>
+            </footer>
+        </form>
+    </dialog>
+
+    <!-- Session edit -->
+    <dialog class="dialog" id="session-edit-dialog" aria-labelledby="session-edit-dialog-title">
+        <form id="session-edit-form">
+            <header class="dialog-header">
+                <h2 class="dialog-title" id="session-edit-dialog-title">Edit session</h2>
+                <button type="button" class="icon-button" data-close-dialog aria-label="Close">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
+            </header>
+            <div class="dialog-body">
+                <div class="field">
+                    <label for="session-edit-name-input">Session name</label>
+                    <input type="text" id="session-edit-name-input" required autocomplete="off">
+                </div>
+                <div id="session-edit-table-section">
+                    <h3 class="subheading">Columns</h3>
+                    <ul class="column-list" id="session-edit-columns"></ul>
+                    <div class="field" id="session-edit-pagination-field">
+                        <label for="session-edit-pagination-input" id="session-edit-pagination-label">Max pages</label>
+                        <input type="number" id="session-edit-pagination-input" min="1" step="1" inputmode="numeric" required>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="session-edit-latest-url">Latest data URL</label>
+                    <div class="input-with-button">
+                        <input type="text" id="session-edit-latest-url" readonly spellcheck="false">
+                        <button type="button" class="btn btn-secondary" id="copy-latest-url-btn">Copy</button>
+                    </div>
+                    <p class="field-hint">Returns this session's newest successful run as JSON. Send the API token as a Bearer header when the server has one.</p>
+                </div>
+                <p class="error-box" id="session-edit-error" hidden></p>
+            </div>
+            <footer class="dialog-footer">
+                <button type="button" class="btn btn-ghost" data-close-dialog>Cancel</button>
+                <button type="submit" class="btn btn-primary" id="session-edit-save-btn">Save</button>
+            </footer>
+        </form>
+    </dialog>
+
+    <!-- Schedule create -->
+    <dialog class="dialog dialog-small" id="schedule-dialog" aria-labelledby="schedule-dialog-title">
+        <form id="schedule-form">
+            <header class="dialog-header">
+                <h2 class="dialog-title" id="schedule-dialog-title">Schedule</h2>
+                <button type="button" class="icon-button" data-close-dialog aria-label="Close">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
+            </header>
+            <div class="dialog-body">
+                <div class="field">
+                    <label for="schedule-frequency-input">Run every (minutes)</label>
+                    <input type="number" id="schedule-frequency-input" min="1" step="1" inputmode="numeric" required>
+                </div>
+                <p class="field-hint">60 runs hourly, 1440 runs daily.</p>
+            </div>
+            <footer class="dialog-footer">
+                <button type="button" class="btn btn-ghost" data-close-dialog>Cancel</button>
+                <button type="submit" class="btn btn-primary" id="schedule-create-btn">Create schedule</button>
+            </footer>
+        </form>
+    </dialog>
+
+    <!-- Confirmation -->
+    <dialog class="dialog dialog-small" id="confirm-dialog" aria-labelledby="confirm-message">
+        <form method="dialog">
+            <div class="dialog-body">
+                <p class="confirm-message" id="confirm-message"></p>
+            </div>
+            <footer class="dialog-footer">
+                <button type="submit" class="btn btn-ghost" value="cancel">Cancel</button>
+                <button type="submit" class="btn btn-danger" value="accept" id="confirm-accept-btn">Delete</button>
+            </footer>
+        </form>
+    </dialog>
+
+    <!-- Run viewer -->
+    <dialog class="dialog sheet" id="run-viewer" aria-labelledby="run-viewer-title">
+        <header class="dialog-header">
+            <div class="run-viewer-heading">
+                <h2 class="dialog-title" id="run-viewer-title">Run</h2>
+                <div class="run-viewer-meta" id="run-viewer-meta"></div>
+            </div>
+            <button type="button" class="icon-button" data-close-dialog aria-label="Close">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+        </header>
+        <div class="sheet-body">
+            <p class="error-box" id="run-viewer-error" hidden></p>
+
+            <div class="tabs" role="tablist" aria-label="Run records">
+                <button type="button" class="tab" role="tab" id="run-viewer-table-tab" data-tab="table" aria-controls="run-viewer-table-panel" aria-selected="true">Table</button>
+                <button type="button" class="tab" role="tab" id="run-viewer-json-tab" data-tab="json" aria-controls="run-viewer-json-panel" aria-selected="false">JSON</button>
+            </div>
+            <div class="tab-panel" role="tabpanel" id="run-viewer-table-panel" aria-labelledby="run-viewer-table-tab">
+                <div class="table-scroll records-scroll" id="run-viewer-records"></div>
+            </div>
+            <div class="tab-panel" role="tabpanel" id="run-viewer-json-panel" aria-labelledby="run-viewer-json-tab" hidden>
+                <div class="json-frame">
+                    <button type="button" class="btn btn-secondary btn-small json-copy" id="copy-json-btn">Copy</button>
+                    <pre class="json-view" id="run-viewer-json"></pre>
                 </div>
             </div>
+
+            <section class="export-panel" aria-labelledby="export-title">
+                <h3 class="subheading" id="export-title">Export</h3>
+                <div class="export-options">
+                    <div class="field">
+                        <label for="export-format-select">Format</label>
+                        <select id="export-format-select">
+                            <option value="json">JSON</option>
+                            <option value="csv">CSV</option>
+                            <option value="jsonl">JSONL</option>
+                        </select>
+                    </div>
+                    <div class="export-json-options" id="export-json-options">
+                        <label class="checkbox-field">
+                            <input type="checkbox" id="export-envelope-checkbox">
+                            <span>Wrap in run details</span>
+                        </label>
+                        <label class="checkbox-field">
+                            <input type="checkbox" id="export-pretty-checkbox" checked>
+                            <span>Pretty</span>
+                        </label>
+                    </div>
+                </div>
+                <fieldset class="export-fields">
+                    <legend>Fields</legend>
+                    <div class="field-chips" id="export-fields-list"></div>
+                </fieldset>
+                <button type="button" class="btn btn-primary" id="export-download-btn">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 17v3h16v-3"/></svg>
+                    Download
+                </button>
+            </section>
         </div>
-    </footer>
+    </dialog>
+
+    <div class="toast-region" id="toast-region"></div>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
