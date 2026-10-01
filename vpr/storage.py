@@ -6,7 +6,7 @@ Handles SQLite database operations for sessions, schedules, and extracted data.
 import sqlite3
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 
 RUN_HISTORY_COLUMNS = {
@@ -16,6 +16,13 @@ RUN_HISTORY_COLUMNS = {
     "triggered_by": "TEXT",
     "items_count": "INTEGER",
 }
+
+
+def next_run_from_now(frequency_minutes: int) -> str:
+    """The next run time, in the server's local time, as the text the dashboard parses."""
+    # Written as text because sqlite3's default datetime adapter is deprecated since Python 3.12.
+    # isoformat(" ") is what that adapter wrote, so stored values keep one format.
+    return (datetime.now() + timedelta(minutes=frequency_minutes)).isoformat(" ")
 
 
 def run_outcome_fields(row: sqlite3.Row) -> Dict:
@@ -241,14 +248,10 @@ class StorageManager:
         conn = self._connect()
         cursor = conn.cursor()
         
-        # Calculate next run time
-        from datetime import timedelta
-        next_run = datetime.now() + timedelta(minutes=frequency_minutes)
-        
         cursor.execute("""
             INSERT INTO schedules (session_id, frequency_minutes, next_run)
             VALUES (?, ?, ?)
-        """, (session_id, frequency_minutes, next_run))
+        """, (session_id, frequency_minutes, next_run_from_now(frequency_minutes)))
         
         schedule_id = cursor.lastrowid
         conn.commit()
@@ -340,11 +343,8 @@ class StorageManager:
             updates.append("frequency_minutes = ?")
             params.append(frequency_minutes)
             
-            # Recalculate next run
-            from datetime import timedelta
-            next_run = datetime.now() + timedelta(minutes=frequency_minutes)
             updates.append("next_run = ?")
-            params.append(next_run)
+            params.append(next_run_from_now(frequency_minutes))
         
         if enabled is not None:
             updates.append("enabled = ?")
@@ -372,13 +372,10 @@ class StorageManager:
         """Update the next run time for a schedule."""
         schedule = self.get_schedule(schedule_id)
         if schedule:
-            from datetime import timedelta
-            next_run = datetime.now() + timedelta(minutes=schedule["frequency_minutes"])
-            
             conn = self._connect()
             cursor = conn.cursor()
-            cursor.execute("UPDATE schedules SET next_run = ? WHERE id = ?", 
-                         (next_run, schedule_id))
+            cursor.execute("UPDATE schedules SET next_run = ? WHERE id = ?",
+                         (next_run_from_now(schedule["frequency_minutes"]), schedule_id))
             conn.commit()
             conn.close()
     
