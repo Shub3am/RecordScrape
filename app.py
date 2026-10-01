@@ -3,17 +3,19 @@ Visual Data Scraper - Flask Application
 Main application with REST API for managing sessions, schedules, and data extraction.
 """
 
-from flask import Flask, render_template, request, jsonify, send_file
 import dataclasses
 import hmac
 import io
+import logging
 import os
 import threading
-import logging
-from typing import Annotated, Optional
+from typing import Annotated
 from urllib.parse import urlparse
-from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
+
 import waitress
+from flask import Flask, jsonify, render_template, request, send_file
+from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
+
 from recordscrape.browsers import BACKENDS_WITHOUT_BINDINGS, BROWSER_ERRORS, BrowserConfig
 from recordscrape.exporters import EXPORT_FORMATS, ExportOptions, export_text
 from recordscrape.flows import (
@@ -28,7 +30,7 @@ from recordscrape.recorder import SessionRecorder
 from recordscrape.runner import RunOptions
 from recordscrape.server_settings import server_settings_from_env
 from recordscrape.worker import BrowserWorker
-from vpr import StorageManager, ScraperScheduler
+from vpr import ScraperScheduler, StorageManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -51,20 +53,21 @@ browser_worker = BrowserWorker()
 scheduler = ScraperScheduler(storage, browser_worker, BROWSER_CONFIG)
 
 # Global recorder instance (one at a time)
-current_recorder: Optional[SessionRecorder] = None
+current_recorder: SessionRecorder | None = None
 # The browser settings the recording session is saved with; None means BROWSER_CONFIG.
-current_browser_settings: Optional[dict] = None
+current_browser_settings: dict | None = None
 recorder_lock = threading.Lock()
 
 
 # ==================== API TOKEN ====================
 
+
 @app.before_request
 def require_api_token():
     """Refuses an /api request without the configured bearer token; the page itself stays open."""
-    if SERVER_SETTINGS.api_token is None or not request.path.startswith('/api/'):
+    if SERVER_SETTINGS.api_token is None or not request.path.startswith("/api/"):
         return None
-    sent_token = request.headers.get('Authorization', '').removeprefix('Bearer ')
+    sent_token = request.headers.get("Authorization", "").removeprefix("Bearer ")
     # compare_digest takes as long for a near miss as for a wrong first character.
     if not hmac.compare_digest(sent_token.encode(), SERVER_SETTINGS.api_token.encode()):
         return jsonify({"error": "Missing or wrong API token"}), 401
@@ -73,33 +76,36 @@ def require_api_token():
 
 # ==================== WEB ROUTES ====================
 
-@app.route('/')
+
+@app.route("/")
 def index():
     """Serve the main dashboard."""
-    return render_template('index.html')
+    return render_template("index.html")
 
 
 # ==================== SESSION API ====================
 
-@app.route('/api/sessions/start', methods=['POST'])
+
+@app.route("/api/sessions/start", methods=["POST"])
 def start_session():
     """Start recording a new session."""
     global current_recorder, current_browser_settings
-    
+
     with recorder_lock:
         if current_recorder:
             return jsonify({"error": "Recording already in progress"}), 400
 
         data = request.json
-        url = data.get('url')
+        url = data.get("url")
 
         if not url:
             return jsonify({"error": "URL is required"}), 400
 
         try:
             browser_settings = (
-                BrowserSettings.model_validate(data['browser']).model_dump()
-                if data.get('browser') else None
+                BrowserSettings.model_validate(data["browser"]).model_dump()
+                if data.get("browser")
+                else None
             )
         except ValidationError as validation_error:
             return jsonify({"error": f"Invalid browser settings: {validation_error}"}), 400
@@ -119,50 +125,34 @@ def start_session():
         current_recorder = recorder
         current_browser_settings = browser_settings
 
-        return jsonify({
-            "success": True,
-            "message": "Recording started",
-            "url": url
-        })
+        return jsonify({"success": True, "message": "Recording started", "url": url})
 
 
-@app.route('/api/sessions/selector', methods=['POST'])
+@app.route("/api/sessions/selector", methods=["POST"])
 def activate_selector():
     """Activate element selector mode."""
-    global current_recorder
-    
     if not current_recorder:
         return jsonify({"error": "No active recording"}), 400
 
     browser_worker.submit(current_recorder.activate_picker()).result()
 
-    return jsonify({
-        "success": True,
-        "message": "Selector mode activated"
-    })
+    return jsonify({"success": True, "message": "Selector mode activated"})
 
 
-@app.route('/api/sessions/rows', methods=['POST'])
+@app.route("/api/sessions/rows", methods=["POST"])
 def activate_row_picker():
     """Activate row selector mode."""
-    global current_recorder
-
     if not current_recorder:
         return jsonify({"error": "No active recording"}), 400
 
     browser_worker.submit(current_recorder.activate_row_picker()).result()
 
-    return jsonify({
-        "success": True,
-        "message": "Row selector mode activated"
-    })
+    return jsonify({"success": True, "message": "Row selector mode activated"})
 
 
-@app.route('/api/sessions/next-button', methods=['POST'])
+@app.route("/api/sessions/next-button", methods=["POST"])
 def activate_next_button_picker():
     """Activate next page button selector mode."""
-    global current_recorder
-
     if not current_recorder:
         return jsonify({"error": "No active recording"}), 400
     if current_recorder.row_table is None:
@@ -170,17 +160,12 @@ def activate_next_button_picker():
 
     browser_worker.submit(current_recorder.activate_next_button_picker()).result()
 
-    return jsonify({
-        "success": True,
-        "message": "Next button selector mode activated"
-    })
+    return jsonify({"success": True, "message": "Next button selector mode activated"})
 
 
-@app.route('/api/sessions/infinite-scroll', methods=['POST'])
+@app.route("/api/sessions/infinite-scroll", methods=["POST"])
 def use_infinite_scroll():
     """Make the row table load more rows by scrolling."""
-    global current_recorder
-
     if not current_recorder:
         return jsonify({"error": "No active recording"}), 400
     if current_recorder.row_table is None:
@@ -188,52 +173,47 @@ def use_infinite_scroll():
 
     current_recorder.use_infinite_scroll()
 
-    return jsonify({
-        "success": True,
-        "message": "Infinite scroll enabled"
-    })
+    return jsonify({"success": True, "message": "Infinite scroll enabled"})
 
 
-@app.route('/api/sessions/stop', methods=['POST'])
+@app.route("/api/sessions/stop", methods=["POST"])
 def stop_session():
     """Stop recording and save session."""
     global current_recorder
-    
+
     with recorder_lock:
         if not current_recorder:
             return jsonify({"error": "No active recording"}), 400
 
         session_data = browser_worker.submit(current_recorder.stop()).result()
-        typed_name = request.json.get('name', '').strip()
-        name = typed_name or urlparse(session_data['url']).hostname or session_data['url']
+        typed_name = request.json.get("name", "").strip()
+        name = typed_name or urlparse(session_data["url"]).hostname or session_data["url"]
 
         # Save to database
         session_id = storage.create_session(
             name=name,
-            url=session_data['url'],
-            actions=session_data['actions'],
-            selectors=session_data.get('selectors', []),
-            table=session_data['table'],
-            browser=current_browser_settings
+            url=session_data["url"],
+            actions=session_data["actions"],
+            selectors=session_data.get("selectors", []),
+            table=session_data["table"],
+            browser=current_browser_settings,
         )
-        
+
         current_recorder = None
-        
-        return jsonify({
-            "success": True,
-            "session_id": session_id,
-            "message": "Session saved successfully"
-        })
+
+        return jsonify(
+            {"success": True, "session_id": session_id, "message": "Session saved successfully"}
+        )
 
 
-@app.route('/api/sessions', methods=['GET'])
+@app.route("/api/sessions", methods=["GET"])
 def get_sessions():
     """Get all sessions."""
     sessions = storage.get_all_sessions()
     return jsonify(sessions)
 
 
-@app.route('/api/sessions/<int:session_id>', methods=['GET'])
+@app.route("/api/sessions/<int:session_id>", methods=["GET"])
 def get_session(session_id):
     """Get a specific session."""
     session = storage.get_session(session_id)
@@ -245,6 +225,7 @@ def get_session(session_id):
 class SessionChanges(BaseModel):
     """A PATCH body. A key left out keeps its value; null is refused, because pydantic does not
     validate these defaults but does validate a null that is sent."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = None
@@ -253,7 +234,7 @@ class SessionChanges(BaseModel):
     table: RowTable = None
 
 
-@app.route('/api/sessions/<int:session_id>', methods=['PATCH'])
+@app.route("/api/sessions/<int:session_id>", methods=["PATCH"])
 def update_session(session_id):
     """Rename a session or replace its row table."""
     if not storage.get_session(session_id):
@@ -266,12 +247,14 @@ def update_session(session_id):
     storage.update_session(
         session_id,
         name=session_changes.name,
-        table=None if session_changes.table is None else session_changes.table.model_dump(exclude_unset=True),
+        table=None
+        if session_changes.table is None
+        else session_changes.table.model_dump(exclude_unset=True),
     )
     return jsonify(storage.get_session(session_id))
 
 
-@app.route('/api/sessions/<int:session_id>', methods=['DELETE'])
+@app.route("/api/sessions/<int:session_id>", methods=["DELETE"])
 def delete_session(session_id):
     """Delete a session."""
     scheduler.remove_session_schedules(session_id)
@@ -279,12 +262,12 @@ def delete_session(session_id):
     return jsonify({"success": True, "message": "Session deleted"})
 
 
-@app.route('/api/sessions/<int:session_id>/replay', methods=['POST'])
+@app.route("/api/sessions/<int:session_id>/replay", methods=["POST"])
 def replay_session(session_id):
     """Manually replay a session. Besides headless, the body may set max_pages, max_scrolls and
     max_rows for this run only."""
     data = request.json or {}
-    headless = data.pop('headless', False)
+    headless = data.pop("headless", False)
     try:
         run_options = RunOptions.model_validate(data)
     except ValidationError as validation_error:
@@ -295,23 +278,24 @@ def replay_session(session_id):
 
 # ==================== FLOW FILE API ====================
 
-@app.route('/api/sessions/<int:session_id>/flow', methods=['GET'])
+
+@app.route("/api/sessions/<int:session_id>/flow", methods=["GET"])
 def export_session_flow(session_id):
     """Download a session as a flow file."""
     session = storage.get_session(session_id)
     if not session:
         return jsonify({"error": "Session not found"}), 404
 
-    flow_text = flow_file_json(flow_from_recorded_session(session['name'], session))
+    flow_text = flow_file_json(flow_from_recorded_session(session["name"], session))
     return send_file(
         io.BytesIO(flow_text.encode()),
-        mimetype='application/json',
+        mimetype="application/json",
         as_attachment=True,
-        download_name=f"{session['name']}.flow.json"
+        download_name=f"{session['name']}.flow.json",
     )
 
 
-@app.route('/api/flows', methods=['POST'])
+@app.route("/api/flows", methods=["POST"])
 def import_flow():
     """Save an uploaded flow file as a new session."""
     try:
@@ -321,74 +305,63 @@ def import_flow():
 
     session_id = storage.create_session(name=flow.name, **recorded_session_from_flow(flow))
 
-    return jsonify({
-        "success": True,
-        "session_id": session_id,
-        "message": "Flow imported"
-    })
+    return jsonify({"success": True, "session_id": session_id, "message": "Flow imported"})
 
 
 # ==================== SCHEDULE API ====================
 
-@app.route('/api/schedules', methods=['POST'])
+
+@app.route("/api/schedules", methods=["POST"])
 def create_schedule():
     """Create a new schedule."""
     data = request.json
-    session_id = data.get('session_id')
-    frequency_minutes = data.get('frequency_minutes')
-    
+    session_id = data.get("session_id")
+    frequency_minutes = data.get("frequency_minutes")
+
     if not session_id or not frequency_minutes:
         return jsonify({"error": "session_id and frequency_minutes required"}), 400
-    
+
     # Create in database
     schedule_id = storage.create_schedule(session_id, frequency_minutes)
-    
+
     # Add to scheduler
     scheduler.add_schedule(schedule_id, session_id, frequency_minutes)
-    
-    return jsonify({
-        "success": True,
-        "schedule_id": schedule_id,
-        "message": "Schedule created"
-    })
+
+    return jsonify({"success": True, "schedule_id": schedule_id, "message": "Schedule created"})
 
 
-@app.route('/api/schedules', methods=['GET'])
+@app.route("/api/schedules", methods=["GET"])
 def get_schedules():
     """Get all schedules."""
     schedules = storage.get_all_schedules()
     return jsonify(schedules)
 
 
-@app.route('/api/schedules/<int:schedule_id>', methods=['PUT'])
+@app.route("/api/schedules/<int:schedule_id>", methods=["PUT"])
 def update_schedule(schedule_id):
     """Update a schedule."""
     data = request.json
-    frequency_minutes = data.get('frequency_minutes')
-    enabled = data.get('enabled')
-    
+    frequency_minutes = data.get("frequency_minutes")
+    enabled = data.get("enabled")
+
     # Update in database
     storage.update_schedule(schedule_id, frequency_minutes, enabled)
-    
+
     # Update in scheduler
     if enabled is False:
         scheduler.pause_schedule(schedule_id)
     elif enabled is True:
         scheduler.resume_schedule(schedule_id)
-    
+
     if frequency_minutes:
         schedule = storage.get_schedule(schedule_id)
         if schedule:
-            scheduler.add_schedule(
-                schedule_id,
-                schedule['session_id'],
-                frequency_minutes
-            )
-    
+            scheduler.add_schedule(schedule_id, schedule["session_id"], frequency_minutes)
+
     return jsonify({"success": True, "message": "Schedule updated"})
 
 
-@app.route('/api/schedules/<int:schedule_id>', methods=['DELETE'])
+@app.route("/api/schedules/<int:schedule_id>", methods=["DELETE"])
 def delete_schedule(schedule_id):
     """Delete a schedule."""
     scheduler.remove_schedule(schedule_id)
@@ -398,23 +371,24 @@ def delete_schedule(schedule_id):
 
 # ==================== DATA API ====================
 
-@app.route('/api/data', methods=['GET'])
+
+@app.route("/api/data", methods=["GET"])
 def get_all_data():
     """Get all extracted data."""
-    limit = request.args.get('limit', 50, type=int)
+    limit = request.args.get("limit", 50, type=int)
     data = storage.get_all_data(limit)
     return jsonify(data)
 
 
-@app.route('/api/data/<int:session_id>', methods=['GET'])
+@app.route("/api/data/<int:session_id>", methods=["GET"])
 def get_session_data(session_id):
     """Get extracted data for a specific session."""
-    limit = request.args.get('limit', 10, type=int)
+    limit = request.args.get("limit", 10, type=int)
     data = storage.get_session_data(session_id, limit)
     return jsonify(data)
 
 
-@app.route('/api/data/<int:data_id>/export', methods=['GET'])
+@app.route("/api/data/<int:data_id>/export", methods=["GET"])
 def export_extraction(data_id):
     """Download one extraction as CSV, JSON or JSONL, optionally with only some fields, and for
     JSON wrapped in its run's details or on one line."""
@@ -430,7 +404,7 @@ def export_extraction(data_id):
     return extraction_export_response(extraction, export_options, as_attachment=True)
 
 
-@app.route('/api/sessions/<int:session_id>/data/latest', methods=['GET'])
+@app.route("/api/sessions/<int:session_id>/data/latest", methods=["GET"])
 def get_latest_session_data(session_id):
     """The session's newest successful run, for integrations that pull it. Takes the export
     options, with JSON as the default format."""
@@ -448,41 +422,44 @@ def get_latest_session_data(session_id):
 
 def extraction_export_response(extraction, export_options, as_attachment):
     run_details = {
-        "session": extraction['session_name'],
-        "run_id": extraction['id'],
-        "extracted_at": extraction['extracted_at'],
+        "session": extraction["session_name"],
+        "run_id": extraction["id"],
+        "extracted_at": extraction["extracted_at"],
     }
-    export_body = export_text(extraction['data'], export_options, run_details)
+    export_body = export_text(extraction["data"], export_options, run_details)
     return send_file(
         io.BytesIO(export_body.encode()),
         mimetype=EXPORT_FORMATS[export_options.format].mimetype,
         as_attachment=as_attachment,
-        download_name=f"{extraction['session_name']}-{extraction['id']}.{export_options.format}"
+        download_name=f"{extraction['session_name']}-{extraction['id']}.{export_options.format}",
     )
 
 
 # ==================== STATUS API ====================
 
-@app.route('/api/status', methods=['GET'])
+
+@app.route("/api/status", methods=["GET"])
 def get_status():
     """Get application status."""
-    return jsonify({
-        "recording": current_recorder is not None,
-        "sessions_count": len(storage.get_all_sessions()),
-        "schedules_count": len(storage.get_all_schedules()),
-        "scheduler_running": scheduler.scheduler.running,
-        "last_24_hours": storage.get_run_stats(since_hours=24)
-    })
+    return jsonify(
+        {
+            "recording": current_recorder is not None,
+            "sessions_count": len(storage.get_all_sessions()),
+            "schedules_count": len(storage.get_all_schedules()),
+            "scheduler_running": scheduler.scheduler.running,
+            "last_24_hours": storage.get_run_stats(since_hours=24),
+        }
+    )
 
 
-@app.route('/api/runs', methods=['GET'])
+@app.route("/api/runs", methods=["GET"])
 def get_runs():
     """The newest runs across all sessions, without their data."""
-    limit = request.args.get('limit', 50, type=int)
+    limit = request.args.get("limit", 50, type=int)
     return jsonify(storage.get_run_summaries(limit))
 
 
-@app.route('/healthz', methods=['GET'])
+@app.route("/healthz", methods=["GET"])
 def get_health():
     """For load balancers and container health checks, so it needs no token and reveals only
     whether scheduled runs can happen. 503 when the scheduler or the browser worker has stopped."""
@@ -494,6 +471,7 @@ def get_health():
 
 
 # ==================== ERROR HANDLERS ====================
+
 
 @app.errorhandler(404)
 def not_found(e):
@@ -507,7 +485,7 @@ def internal_error(e):
 
 # ==================== MAIN ====================
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     logger.info(f"Dashboard: http://{SERVER_SETTINGS.host}:{SERVER_SETTINGS.port}")
     # waitress.serve returns, instead of raising, when it is stopped with Ctrl+C.
     waitress.serve(app, host=SERVER_SETTINGS.host, port=SERVER_SETTINGS.port)
