@@ -1,102 +1,212 @@
-// Visual Data Scraper - Dashboard JavaScript
-// API client and UI management
+/*
+ * The RecordScrape dashboard page: switches between its views, calls the /api routes and renders
+ * what they return. It must not keep any state the server owns beyond the last list it fetched,
+ * and must never write server text into HTML without escapeHtml.
+ */
 
 const API_BASE = '/api';
 const API_TOKEN_KEY = 'recordscrape.apiToken';
+const VIEW_NAMES = ['overview', 'record', 'sessions', 'runs', 'schedules'];
+const DEFAULT_VIEW_NAME = 'overview';
+const RUN_LIST_VIEW_NAMES = ['overview', 'runs'];
+const STATUS_POLL_INTERVAL_MS = 2000;
+const RUNS_POLL_INTERVAL_MS = 5000;
+const RUNS_LIST_LIMIT = 50;
+const OVERVIEW_RUNS_COUNT = 5;
+const DEFAULT_SCHEDULE_MINUTES = 60;
+const MISSING_VALUE = '-';
+const RECORDING_ONLY_BUTTON_IDS = [
+    'activate-selector-btn',
+    'activate-row-picker-btn',
+    'activate-next-button-picker-btn',
+    'use-infinite-scroll-btn',
+    'stop-recording-btn'
+];
+// Keyed by a row table's pagination mode: the limit's key in the stored table, the replay option
+// that overrides it for one run, and how the dashboard names it.
+const PAGINATION_LIMITS = {
+    nextButton: { tableKey: 'maxPages', label: 'Max pages', unit: 'pages', description: 'Next button' },
+    infiniteScroll: { tableKey: 'maxScrolls', label: 'Max scrolls', unit: 'scrolls', description: 'Infinite scroll' }
+};
+const TOAST_DURATION_MS = { success: 3500, info: 3500, error: 6500 };
+
 let recordingStatus = 'idle';
-let statusCheckInterval = null;
+let sessionsById = new Map();
+let latestRuns = [];
+let replayedSession = null;
+let editedSession = null;
+let scheduledSession = null;
+let viewedRunId = null;
+let viewedRunRecords = [];
+
+const byId = (elementId) => document.getElementById(elementId);
 
 // ==================== INITIALIZATION ====================
 
 document.addEventListener('DOMContentLoaded', () => {
-    initializeApp();
     setupEventListeners();
-    startStatusPolling();
+    showCurrentView();
+    startPolling();
 });
 
-function initializeApp() {
-    loadSessions();
-    loadSchedules();
-    loadData();
-}
-
 function setupEventListeners() {
-    // Recording controls
-    document.getElementById('start-recording-btn').addEventListener('click', startRecording);
-    document.getElementById('backend-select').addEventListener('change', allowHumanizeOnCloakBrowserOnly);
-    document.getElementById('activate-selector-btn').addEventListener('click', () =>
-        activatePicker('selector', 'Element selector', 'Click elements in the browser.'));
-    document.getElementById('activate-row-picker-btn').addEventListener('click', () =>
-        activatePicker('rows', 'Row selector', 'Click the same field in two rows.'));
-    document.getElementById('activate-next-button-picker-btn').addEventListener('click', () =>
-        activatePicker('next-button', 'Next button selector', 'Click the button that opens the next page.'));
-    document.getElementById('use-infinite-scroll-btn').addEventListener('click', () =>
-        activatePicker('infinite-scroll', 'Infinite scroll', 'Each run scrolls to load more rows.'));
-    document.getElementById('stop-recording-btn').addEventListener('click', stopRecording);
+    window.addEventListener('hashchange', showCurrentView);
+    document.addEventListener('click', closeDialogOfClickedButton);
 
-    document.getElementById('import-flow-input').addEventListener('change', importFlow);
+    byId('start-recording-btn').addEventListener('click', startRecording);
+    byId('backend-select').addEventListener('change', allowHumanizeOnCloakBrowserOnly);
+    byId('activate-selector-btn').addEventListener('click', () =>
+        activatePicker('selector', 'Element selector', 'Click elements in the browser.'));
+    byId('activate-row-picker-btn').addEventListener('click', () =>
+        activatePicker('rows', 'Row selector', 'Click the same field in two rows.'));
+    byId('activate-next-button-picker-btn').addEventListener('click', () =>
+        activatePicker('next-button', 'Next button selector', 'Click the button that opens the next page.'));
+    byId('use-infinite-scroll-btn').addEventListener('click', () =>
+        activatePicker('infinite-scroll', 'Infinite scroll', 'Each run scrolls to load more rows.'));
+    byId('stop-recording-btn').addEventListener('click', stopRecording);
+
+    byId('import-flow-input').addEventListener('change', importFlow);
+    byId('refresh-sessions-btn').addEventListener('click', loadSessions);
+    byId('sessions-grid').addEventListener('click', runSessionCardAction);
+
+    byId('refresh-runs-btn').addEventListener('click', loadRuns);
+    for (const runsTableBodyId of ['runs-table-body', 'overview-runs-body']) {
+        byId(runsTableBodyId).addEventListener('click', openClickedRun);
+        byId(runsTableBodyId).addEventListener('keydown', openRunOnEnter);
+    }
+
+    byId('refresh-schedules-btn').addEventListener('click', loadSchedules);
+    byId('schedules-list').addEventListener('change', toggleSwitchedSchedule);
+    byId('schedules-list').addEventListener('click', deleteClickedSchedule);
+
+    byId('replay-form').addEventListener('submit', runReplay);
+    byId('session-edit-form').addEventListener('submit', saveSessionEdit);
+    byId('session-edit-columns').addEventListener('click', removeClickedColumn);
+    byId('copy-latest-url-btn').addEventListener('click', () =>
+        copyText(byId('session-edit-latest-url').value, 'Latest data URL copied'));
+    byId('schedule-form').addEventListener('submit', createSchedule);
+
+    byId('run-viewer-table-tab').addEventListener('click', () => selectRunViewerTab('table'));
+    byId('run-viewer-json-tab').addEventListener('click', () => selectRunViewerTab('json'));
+    byId('copy-json-btn').addEventListener('click', () =>
+        copyText(byId('run-viewer-json').textContent, 'JSON copied'));
+    byId('export-format-select').addEventListener('change', showJsonExportOptions);
+    byId('export-download-btn').addEventListener('click', downloadViewedRun);
 }
 
-// ==================== STATUS POLLING ====================
+// ==================== VIEWS ====================
 
-function startStatusPolling() {
-    statusCheckInterval = setInterval(updateStatus, 2000);
+const VIEW_LOADERS = {
+    overview: loadRuns,
+    sessions: loadSessions,
+    runs: loadRuns,
+    schedules: loadSchedules
+};
+
+function currentViewName() {
+    const hashViewName = location.hash.slice(1);
+    return VIEW_NAMES.includes(hashViewName) ? hashViewName : DEFAULT_VIEW_NAME;
+}
+
+function showCurrentView() {
+    const viewName = currentViewName();
+    for (const view of document.querySelectorAll('.view')) {
+        view.hidden = view.dataset.view !== viewName;
+    }
+    for (const navLink of document.querySelectorAll('.nav-link')) {
+        if (navLink.dataset.view === viewName) {
+            navLink.setAttribute('aria-current', 'page');
+        } else {
+            navLink.removeAttribute('aria-current');
+        }
+    }
+    VIEW_LOADERS[viewName]?.();
+}
+
+function closeDialogOfClickedButton(event) {
+    const closeButton = event.target.closest('[data-close-dialog]');
+    if (closeButton) {
+        closeButton.closest('dialog').close();
+    }
+}
+
+// ==================== POLLING ====================
+
+function startPolling() {
     updateStatus();
+    updateHealth();
+    setInterval(() => {
+        updateStatus();
+        updateHealth();
+    }, STATUS_POLL_INTERVAL_MS);
+    setInterval(refreshRunsOnRunListViews, RUNS_POLL_INTERVAL_MS);
+}
+
+function refreshRunsOnRunListViews() {
+    if (RUN_LIST_VIEW_NAMES.includes(currentViewName())) {
+        loadRuns();
+    }
 }
 
 async function updateStatus() {
     try {
-        const response = await apiFetch(`/status`);
+        const response = await apiFetch('/status');
+        if (!response.ok) return;
         const status = await response.json();
 
         recordingStatus = status.recording ? 'recording' : 'idle';
         updateRecordingUI();
 
-        // Update stats
-        document.getElementById('sessions-count').textContent = status.sessions_count;
-        document.getElementById('schedules-count').textContent = status.schedules_count;
-
+        const lastDayStats = status.last_24_hours;
+        byId('sessions-count').textContent = formatCount(status.sessions_count);
+        byId('schedules-count').textContent = formatCount(status.schedules_count);
+        byId('runs-24h-count').textContent = formatCount(lastDayStats.runs);
+        byId('failed-24h-count').textContent = formatCount(lastDayStats.failed_runs);
+        byId('items-24h-count').textContent = formatCount(lastDayStats.items_extracted);
+        byId('failed-24h-tile').classList.toggle('stat-tile-alert', lastDayStats.failed_runs > 0);
+        byId('overview-scheduler-text').textContent = status.scheduler_running ? 'Running' : 'Stopped';
     } catch (error) {
         console.error('Error fetching status:', error);
     }
 }
 
-function updateRecordingUI() {
-    const statusDot = document.getElementById('status-dot');
-    const statusText = document.getElementById('status-text');
-    const startBtn = document.getElementById('start-recording-btn');
-    const selectorBtn = document.getElementById('activate-selector-btn');
-    const rowPickerBtn = document.getElementById('activate-row-picker-btn');
-    const nextButtonPickerBtn = document.getElementById('activate-next-button-picker-btn');
-    const infiniteScrollBtn = document.getElementById('use-infinite-scroll-btn');
-    const stopBtn = document.getElementById('stop-recording-btn');
-
-    if (recordingStatus === 'recording') {
-        statusDot.className = 'status-dot recording';
-        statusText.textContent = 'Recording';
-        startBtn.disabled = true;
-        selectorBtn.disabled = false;
-        rowPickerBtn.disabled = false;
-        nextButtonPickerBtn.disabled = false;
-        infiniteScrollBtn.disabled = false;
-        stopBtn.disabled = false;
-    } else {
-        statusDot.className = 'status-dot idle';
-        statusText.textContent = 'Idle';
-        startBtn.disabled = false;
-        selectorBtn.disabled = true;
-        rowPickerBtn.disabled = true;
-        nextButtonPickerBtn.disabled = true;
-        infiniteScrollBtn.disabled = true;
-        stopBtn.disabled = true;
+// /healthz needs no token, so it goes through plain fetch rather than apiFetch.
+async function updateHealth() {
+    const healthIndicator = byId('health-indicator');
+    const healthText = byId('health-text');
+    try {
+        const response = await fetch('/healthz');
+        const health = await response.json();
+        healthIndicator.dataset.health = response.ok ? 'healthy' : 'unhealthy';
+        if (response.ok) {
+            healthText.textContent = 'Healthy';
+        } else {
+            healthText.textContent = health.scheduler_running ? 'Browser worker stopped' : 'Scheduler stopped';
+        }
+    } catch {
+        healthIndicator.dataset.health = 'unhealthy';
+        healthText.textContent = 'Server unreachable';
     }
+}
+
+function updateRecordingUI() {
+    const isRecording = recordingStatus === 'recording';
+    byId('status-dot').className = isRecording ? 'status-dot recording' : 'status-dot idle';
+    byId('status-text').textContent = isRecording ? 'Recording' : 'Idle';
+    byId('start-recording-btn').disabled = isRecording;
+    for (const buttonId of RECORDING_ONLY_BUTTON_IDS) {
+        byId(buttonId).disabled = !isRecording;
+    }
+    const overviewRecordingText = byId('overview-recording-text');
+    overviewRecordingText.textContent = isRecording ? 'Recording' : 'Idle';
+    overviewRecordingText.classList.toggle('is-recording', isRecording);
 }
 
 // ==================== RECORDING CONTROLS ====================
 
 function allowHumanizeOnCloakBrowserOnly() {
-    const humanizeCheckbox = document.getElementById('humanize-checkbox');
-    humanizeCheckbox.disabled = document.getElementById('backend-select').value !== 'cloakbrowser';
+    const humanizeCheckbox = byId('humanize-checkbox');
+    humanizeCheckbox.disabled = byId('backend-select').value !== 'cloakbrowser';
     if (humanizeCheckbox.disabled) {
         humanizeCheckbox.checked = false;
     }
@@ -104,37 +214,35 @@ function allowHumanizeOnCloakBrowserOnly() {
 
 function chosenBrowserSettings() {
     return {
-        backend: document.getElementById('backend-select').value,
-        proxy: document.getElementById('proxy-input').value.trim() || null,
-        humanize: document.getElementById('humanize-checkbox').checked
+        backend: byId('backend-select').value,
+        proxy: byId('proxy-input').value.trim() || null,
+        humanize: byId('humanize-checkbox').checked
     };
 }
 
 async function startRecording() {
-    const urlInput = document.getElementById('url-input');
+    const urlInput = byId('url-input');
     let url = urlInput.value.trim();
 
     if (!url) {
-        alert('Please enter a URL');
+        showNotification('Please enter a URL', 'error');
         return;
     }
 
-    // Auto-add https:// if protocol is missing
     if (!url.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//)) {
         url = 'https://' + url;
-        urlInput.value = url; // Update the input field
+        urlInput.value = url;
     }
 
-    // Validate URL
     try {
         new URL(url);
     } catch {
-        alert('Please enter a valid URL');
+        showNotification('Please enter a valid URL', 'error');
         return;
     }
 
     try {
-        const response = await apiFetch(`/sessions/start`, {
+        const response = await apiFetch('/sessions/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url, browser: chosenBrowserSettings() })
@@ -143,7 +251,7 @@ async function startRecording() {
         const result = await response.json();
 
         if (result.success) {
-            showNotification('Recording started! Browser window opened.', 'success');
+            showNotification('Recording started. A browser window opened.', 'success');
             recordingStatus = 'recording';
             updateRecordingUI();
         } else {
@@ -164,7 +272,7 @@ async function activatePicker(endpoint, pickerName, instructions) {
         const result = await response.json();
 
         if (result.success) {
-            showNotification(`${pickerName} activated! ${instructions}`, 'success');
+            showNotification(`${pickerName} activated. ${instructions}`, 'success');
         } else {
             showNotification(result.error || `Failed to activate ${pickerName.toLowerCase()}`, 'error');
         }
@@ -174,11 +282,11 @@ async function activatePicker(endpoint, pickerName, instructions) {
 }
 
 async function stopRecording() {
-    const sessionNameInput = document.getElementById('session-name-input');
+    const sessionNameInput = byId('session-name-input');
     const name = sessionNameInput.value.trim();
 
     try {
-        const response = await apiFetch(`/sessions/stop`, {
+        const response = await apiFetch('/sessions/stop', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name })
@@ -187,10 +295,10 @@ async function stopRecording() {
         const result = await response.json();
 
         if (result.success) {
-            showNotification('Session saved successfully!', 'success');
+            showNotification('Session saved', 'success');
             recordingStatus = 'idle';
             updateRecordingUI();
-            document.getElementById('url-input').value = '';
+            byId('url-input').value = '';
             sessionNameInput.value = '';
             loadSessions();
         } else {
@@ -203,138 +311,128 @@ async function stopRecording() {
 
 // ==================== SESSIONS ====================
 
+const SESSION_CARD_ACTIONS = {
+    replay: openReplayDialog,
+    edit: openSessionEditDialog,
+    export: (session) => downloadFromApi(`/sessions/${session.id}/flow`),
+    schedule: openScheduleDialog,
+    delete: deleteSession
+};
+
 async function loadSessions() {
     try {
-        const response = await apiFetch(`/sessions`);
+        const response = await apiFetch('/sessions');
+        if (!response.ok) return;
         const sessions = await response.json();
-
+        sessionsById = new Map(sessions.map((session) => [session.id, session]));
         renderSessions(sessions);
     } catch (error) {
         console.error('Error loading sessions:', error);
     }
 }
 
-// Names the proxy's presence only: its URL can hold a password typed literally.
-function describeBrowserSettings(browserSettings) {
-    if (!browserSettings) {
-        return 'chromium';
-    }
-    const settingLabels = [escapeHtml(browserSettings.backend)];
-    if (browserSettings.proxy) {
-        settingLabels.push('proxy');
-    }
-    if (browserSettings.humanize) {
-        settingLabels.push('humanize');
-    }
-    return settingLabels.join(' + ');
-}
-
 function renderSessions(sessions) {
-    const container = document.getElementById('sessions-grid');
-
+    const sessionsGrid = byId('sessions-grid');
     if (sessions.length === 0) {
-        container.innerHTML = `
+        sessionsGrid.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">📹</div>
-                <div class="empty-state-text">No sessions yet</div>
-                <p>Start recording to create your first session</p>
-            </div>
-        `;
+                <strong>No sessions yet</strong>
+                <a href="#record">Record a session</a> or import a flow file.
+            </div>`;
         return;
     }
-
-    container.innerHTML = sessions.map(session => `
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">${escapeHtml(session.name)}</h3>
-                <div class="card-meta">
-                    <span>📅 ${formatDate(session.created_at)}</span>
-                    <span>▶️ ${session.run_count} runs</span>
-                    <span>🌐 ${describeBrowserSettings(session.browser)}</span>
-                </div>
-                <a href="${escapeHtml(session.url)}" target="_blank" class="card-url">${escapeHtml(session.url)}</a>
-            </div>
-            
-            <div class="card-stats">
-                <div class="stat">
-                    <div class="stat-value">${session.actions.length}</div>
-                    <div class="stat-label">Actions</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value">${session.selectors.length}</div>
-                    <div class="stat-label">Selectors</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value">${session.table ? session.table.columns.length : 0}</div>
-                    <div class="stat-label">Row Columns</div>
-                </div>
-            </div>
-            
-            <div style="padding: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
-                    <input type="checkbox" id="headless-${session.id}" style="cursor: pointer;">
-                    <span>Headless mode (faster, no browser window)</span>
-                </label>
-            </div>
-            
-            <div class="card-actions">
-                <button class="btn btn-success btn-small" onclick="replaySession(${session.id})">
-                    ▶️ Replay
-                </button>
-                <button class="btn btn-primary btn-small" onclick="createSchedule(${session.id})">
-                    ⏰ Schedule
-                </button>
-                <button class="btn btn-secondary btn-small" onclick="viewData(${session.id})">
-                    📊 Data
-                </button>
-                <button class="btn btn-secondary btn-small" onclick="downloadFromApi('/sessions/${session.id}/flow')">
-                    📤 Export
-                </button>
-                <button class="btn btn-danger btn-small" onclick="deleteSession(${session.id})">
-                    🗑️ Delete
-                </button>
-            </div>
-        </div>
-    `).join('');
+    sessionsGrid.innerHTML = sessions.map(sessionCardHtml).join('');
 }
 
-async function replaySession(sessionId) {
-    const headlessCheckbox = document.getElementById(`headless-${sessionId}`);
-    const headless = headlessCheckbox ? headlessCheckbox.checked : false;
+function sessionCardHtml(session) {
+    const lastRun = parseUtcTimestamp(session.last_run);
+    return `
+        <article class="session-card" data-session-id="${session.id}">
+            <header class="session-card-header">
+                <h3 class="session-card-title">${escapeHtml(session.name)}</h3>
+                <span class="session-card-host" title="${escapeHtml(session.url)}">${escapeHtml(urlHost(session.url))}</span>
+                <div class="badge-row">${browserBadgesHtml(session.browser)}</div>
+            </header>
+            <dl class="session-facts">
+                <div><dt>Extracts</dt><dd>${describeExtraction(session)}</dd></div>
+                <div><dt>Pagination</dt><dd>${describePagination(session.table)}</dd></div>
+                <div><dt>Runs</dt><dd>${formatCount(session.run_count)}</dd></div>
+                <div><dt>Last run</dt><dd title="${escapeHtml(session.last_run || '')}">${formatRelativeTime(lastRun)}</dd></div>
+            </dl>
+            <div class="session-card-actions">
+                <button type="button" class="btn btn-primary btn-small" data-action="replay">Replay</button>
+                <button type="button" class="btn btn-secondary btn-small" data-action="edit">Edit</button>
+                <button type="button" class="btn btn-secondary btn-small" data-action="export">Export flow</button>
+                <button type="button" class="btn btn-secondary btn-small" data-action="schedule">Schedule</button>
+                <button type="button" class="btn btn-ghost-danger btn-small" data-action="delete">Delete</button>
+            </div>
+        </article>`;
+}
 
-    const mode = headless ? 'headless mode' : 'visible browser';
-    if (!confirm(`Replay this session now in ${mode}?`)) return;
+// Shows only whether a proxy is set: its URL can hold a password typed literally.
+function browserBadgesHtml(browserSettings) {
+    if (!browserSettings) {
+        return '<span class="badge">chromium</span>';
+    }
+    const badges = [`<span class="badge">${escapeHtml(browserSettings.backend)}</span>`];
+    if (browserSettings.proxy) {
+        badges.push('<span class="badge badge-accent">proxy</span>');
+    }
+    if (browserSettings.humanize) {
+        badges.push('<span class="badge">humanize</span>');
+    }
+    return badges.join('');
+}
 
-    showNotification(`Replaying session in ${mode}...`, 'info');
+function describeExtraction(session) {
+    if (session.table) {
+        const columnCount = session.table.columns.length;
+        return `Rows, ${columnCount} ${columnCount === 1 ? 'column' : 'columns'}`;
+    }
+    const pickedCount = session.selectors.length;
+    return `${pickedCount} picked ${pickedCount === 1 ? 'element' : 'elements'}`;
+}
 
+function describePagination(table) {
+    const pagination = table && table.pagination;
+    if (!pagination) {
+        return 'Single page';
+    }
+    const paginationLimit = PAGINATION_LIMITS[pagination.mode];
+    return `${paginationLimit.description}, up to ${pagination[paginationLimit.tableKey]} ${paginationLimit.unit}`;
+}
+
+function urlHost(url) {
     try {
-        const response = await apiFetch(`/sessions/${sessionId}/replay`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ headless })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            showNotification(`Extracted ${result.items_count} items!`, 'success');
-            loadSessions();
-            loadData();
-        } else {
-            showNotification(result.error || 'Replay failed', 'error');
-        }
-    } catch (error) {
-        showNotification('Error replaying session: ' + error.message, 'error');
+        return new URL(url).host || url;
+    } catch {
+        return url;
     }
 }
 
-async function deleteSession(sessionId) {
-    if (!confirm('Delete this session? This cannot be undone.')) return;
+function runSessionCardAction(event) {
+    const actionButton = event.target.closest('[data-action]');
+    if (!actionButton) return;
+    const sessionId = Number(actionButton.closest('[data-session-id]').dataset.sessionId);
+    SESSION_CARD_ACTIONS[actionButton.dataset.action](sessionsById.get(sessionId));
+}
+
+async function deleteSession(session) {
+    const confirmed = await askConfirmation(
+        `Delete "${session.name}"? Its runs and schedules are deleted with it. This cannot be undone.`,
+        'Delete session'
+    );
+    if (!confirmed) return;
 
     try {
-        await apiFetch(`/sessions/${sessionId}`, { method: 'DELETE' });
-        showNotification('Session deleted', 'success');
-        loadSessions();
+        const response = await apiFetch(`/sessions/${session.id}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (result.success) {
+            showNotification('Session deleted', 'success');
+            loadSessions();
+        } else {
+            showNotification(result.error || 'Failed to delete session', 'error');
+        }
     } catch (error) {
         showNotification('Error deleting session: ' + error.message, 'error');
     }
@@ -346,7 +444,7 @@ async function importFlow(event) {
     if (!flowFile) return;
 
     try {
-        const response = await apiFetch(`/flows`, {
+        const response = await apiFetch('/flows', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: await flowFile.text()
@@ -368,100 +466,297 @@ async function importFlow(event) {
     }
 }
 
-// ==================== SCHEDULES ====================
+// ==================== REPLAY DIALOG ====================
 
-async function loadSchedules() {
-    try {
-        const response = await apiFetch(`/schedules`);
-        const schedules = await response.json();
+function openReplayDialog(session) {
+    replayedSession = session;
+    byId('replay-dialog-title').textContent = `Replay ${session.name}`;
 
-        renderSchedules(schedules);
-    } catch (error) {
-        console.error('Error loading schedules:', error);
-    }
+    const pagination = session.table && session.table.pagination;
+    showReplayLimitInput('replay-max-pages', pagination && pagination.mode === 'nextButton' ? pagination.maxPages : null);
+    showReplayLimitInput('replay-max-scrolls', pagination && pagination.mode === 'infiniteScroll' ? pagination.maxScrolls : null);
+    byId('replay-max-rows-input').value = '';
+    byId('replay-result').hidden = true;
+    byId('replay-dialog').showModal();
 }
 
-function renderSchedules(schedules) {
-    const container = document.getElementById('schedules-list');
-
-    if (schedules.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">⏰</div>
-                <div class="empty-state-text">No schedules yet</div>
-                <p>Create a schedule to automate data extraction</p>
-            </div>
-        `;
-        return;
-    }
-
-    container.innerHTML = `
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Session</th>
-                    <th>Frequency</th>
-                    <th>Next Run</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${schedules.map(schedule => `
-                    <tr>
-                        <td>
-                            <strong>${escapeHtml(schedule.session_name)}</strong><br>
-                            <small style="color: var(--text-secondary)">${escapeHtml(schedule.session_url)}</small>
-                        </td>
-                        <td>Every ${schedule.frequency_minutes} min</td>
-                        <td>${formatDate(schedule.next_run)}</td>
-                        <td>
-                            <span class="badge ${schedule.enabled ? 'badge-success' : 'badge-danger'}">
-                                ${schedule.enabled ? 'Active' : 'Paused'}
-                            </span>
-                        </td>
-                        <td>
-                            <button class="btn btn-secondary btn-small" onclick="toggleSchedule(${schedule.id}, ${!schedule.enabled})">
-                                ${schedule.enabled ? '⏸️ Pause' : '▶️ Resume'}
-                            </button>
-                            <button class="btn btn-danger btn-small" onclick="deleteSchedule(${schedule.id})">
-                                🗑️
-                            </button>
-                        </td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    `;
+// A limit the session has no pagination for is hidden and disabled, which also keeps it out of
+// form validation.
+function showReplayLimitInput(limitIdPrefix, sessionLimit) {
+    const limitInput = byId(`${limitIdPrefix}-input`);
+    const isShown = sessionLimit !== null;
+    byId(`${limitIdPrefix}-field`).hidden = !isShown;
+    limitInput.disabled = !isShown;
+    limitInput.value = '';
+    limitInput.placeholder = isShown ? `Session: ${sessionLimit}` : '';
 }
 
-async function createSchedule(sessionId) {
-    const frequency = prompt('Enter frequency in minutes (e.g., 60 for hourly):');
-    if (!frequency) return;
-
-    const minutes = parseInt(frequency);
-    if (isNaN(minutes) || minutes < 1) {
-        alert('Please enter a valid number of minutes');
-        return;
+function replayRequestBody() {
+    const replayRequest = { headless: byId('replay-headless-checkbox').checked };
+    const limitInputsByOption = {
+        max_pages: byId('replay-max-pages-input'),
+        max_scrolls: byId('replay-max-scrolls-input'),
+        max_rows: byId('replay-max-rows-input')
+    };
+    for (const [optionName, limitInput] of Object.entries(limitInputsByOption)) {
+        if (!limitInput.disabled && limitInput.value !== '') {
+            replayRequest[optionName] = Number(limitInput.value);
+        }
     }
+    return replayRequest;
+}
+
+async function runReplay(event) {
+    event.preventDefault();
+    const runButton = byId('replay-run-btn');
+    const sessionId = replayedSession.id;
+    setButtonBusy(runButton, true);
+    showReplayResult('running', 'Running the session. This can take a minute.');
 
     try {
-        const response = await apiFetch(`/schedules`, {
+        const response = await apiFetch(`/sessions/${sessionId}/replay`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: sessionId, frequency_minutes: minutes })
+            body: JSON.stringify(replayRequestBody())
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            const itemsText = `${formatCount(result.items_count)} ${result.items_count === 1 ? 'item' : 'items'}`;
+            showReplayResult('success', `Extracted ${itemsText} in ${formatDuration(result.duration_ms)}.`);
+            showNotification(`Replay finished: ${itemsText}`, 'success');
+        } else {
+            showReplayResult('error', result.error || 'Replay failed');
+            showNotification('Replay failed', 'error');
+        }
+    } catch (error) {
+        showReplayResult('error', 'Error replaying session: ' + error.message);
+    } finally {
+        setButtonBusy(runButton, false);
+        loadRuns();
+        loadSessions();
+    }
+}
+
+function showReplayResult(outcome, resultText) {
+    const replayResult = byId('replay-result');
+    replayResult.dataset.outcome = outcome;
+    replayResult.textContent = resultText;
+    replayResult.hidden = false;
+}
+
+function setButtonBusy(button, isBusy) {
+    button.disabled = isBusy;
+    button.setAttribute('aria-busy', String(isBusy));
+    button.querySelector('.btn-label').textContent = isBusy ? button.dataset.busyLabel : button.dataset.idleLabel;
+}
+
+// ==================== SESSION EDIT DIALOG ====================
+
+function openSessionEditDialog(session) {
+    editedSession = session;
+    byId('session-edit-dialog-title').textContent = `Edit ${session.name}`;
+    byId('session-edit-name-input').value = session.name;
+    byId('session-edit-latest-url').value = `${location.origin}${API_BASE}/sessions/${session.id}/data/latest`;
+    byId('session-edit-error').hidden = true;
+
+    const table = session.table;
+    byId('session-edit-table-section').hidden = !table;
+    byId('session-edit-columns').innerHTML = table ? table.columns.map(editableColumnHtml).join('') : '';
+    allowColumnRemovalWhileSeveralRemain();
+
+    const pagination = table && table.pagination;
+    const paginationInput = byId('session-edit-pagination-input');
+    byId('session-edit-pagination-field').hidden = !pagination;
+    paginationInput.disabled = !pagination;
+    if (pagination) {
+        const paginationLimit = PAGINATION_LIMITS[pagination.mode];
+        byId('session-edit-pagination-label').textContent = paginationLimit.label;
+        paginationInput.value = pagination[paginationLimit.tableKey];
+    }
+
+    byId('session-edit-dialog').showModal();
+}
+
+function editableColumnHtml(column, columnIndex) {
+    return `
+        <li class="column-row" data-column-index="${columnIndex}">
+            <input type="text" class="column-name-input" value="${escapeHtml(column.name)}" aria-label="Column name" required autocomplete="off" spellcheck="false">
+            <button type="button" class="btn btn-ghost-danger btn-small" data-remove-column>Remove</button>
+            <code class="column-selector" title="${escapeHtml(column.selector)}">${escapeHtml(column.selector)}</code>
+        </li>`;
+}
+
+function removeClickedColumn(event) {
+    const removeButton = event.target.closest('[data-remove-column]');
+    if (!removeButton) return;
+    removeButton.closest('.column-row').remove();
+    allowColumnRemovalWhileSeveralRemain();
+}
+
+// A row table needs at least one column, so the last one cannot be removed.
+function allowColumnRemovalWhileSeveralRemain() {
+    const removeButtons = byId('session-edit-columns').querySelectorAll('[data-remove-column]');
+    for (const removeButton of removeButtons) {
+        removeButton.disabled = removeButtons.length === 1;
+    }
+}
+
+// The server replaces the whole table, so this sends the stored one with the kept columns renamed
+// and the pagination limit changed.
+function editedTable() {
+    const columnRows = byId('session-edit-columns').querySelectorAll('.column-row');
+    const columns = [...columnRows].map((columnRow) => ({
+        ...editedSession.table.columns[Number(columnRow.dataset.columnIndex)],
+        name: columnRow.querySelector('.column-name-input').value.trim()
+    }));
+    const table = { ...editedSession.table, columns };
+    if (table.pagination) {
+        const limitKey = PAGINATION_LIMITS[table.pagination.mode].tableKey;
+        table.pagination = { ...table.pagination, [limitKey]: Number(byId('session-edit-pagination-input').value) };
+    }
+    return table;
+}
+
+async function saveSessionEdit(event) {
+    event.preventDefault();
+    const sessionChanges = { name: byId('session-edit-name-input').value.trim() };
+    if (editedSession.table) {
+        sessionChanges.table = editedTable();
+    }
+    const editError = byId('session-edit-error');
+    editError.hidden = true;
+
+    try {
+        const response = await apiFetch(`/sessions/${editedSession.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sessionChanges)
+        });
+        const result = await response.json();
+
+        if (response.ok) {
+            byId('session-edit-dialog').close();
+            showNotification('Session saved', 'success');
+            loadSessions();
+        } else {
+            editError.textContent = result.error || 'Failed to save session';
+            editError.hidden = false;
+        }
+    } catch (error) {
+        editError.textContent = 'Error saving session: ' + error.message;
+        editError.hidden = false;
+    }
+}
+
+// ==================== SCHEDULES ====================
+
+function openScheduleDialog(session) {
+    scheduledSession = session;
+    byId('schedule-dialog-title').textContent = `Schedule ${session.name}`;
+    byId('schedule-frequency-input').value = DEFAULT_SCHEDULE_MINUTES;
+    byId('schedule-dialog').showModal();
+}
+
+async function createSchedule(event) {
+    event.preventDefault();
+    const frequencyMinutes = Number(byId('schedule-frequency-input').value);
+
+    try {
+        const response = await apiFetch('/schedules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: scheduledSession.id, frequency_minutes: frequencyMinutes })
         });
 
         const result = await response.json();
 
         if (result.success) {
-            showNotification('Schedule created!', 'success');
+            byId('schedule-dialog').close();
+            showNotification(`Scheduled ${scheduledSession.name} ${formatFrequency(frequencyMinutes).toLowerCase()}`, 'success');
             loadSchedules();
         } else {
             showNotification(result.error || 'Failed to create schedule', 'error');
         }
     } catch (error) {
         showNotification('Error creating schedule: ' + error.message, 'error');
+    }
+}
+
+async function loadSchedules() {
+    try {
+        const response = await apiFetch('/schedules');
+        if (!response.ok) return;
+        renderSchedules(await response.json());
+    } catch (error) {
+        console.error('Error loading schedules:', error);
+    }
+}
+
+function renderSchedules(schedules) {
+    const schedulesList = byId('schedules-list');
+
+    if (schedules.length === 0) {
+        schedulesList.innerHTML = `
+            <div class="empty-state">
+                <strong>No schedules yet</strong>
+                Use a session's Schedule action on the <a href="#sessions">Sessions</a> page.
+            </div>`;
+        return;
+    }
+
+    schedulesList.innerHTML = `
+        <div class="table-scroll">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Session</th>
+                        <th>Frequency</th>
+                        <th>Next run</th>
+                        <th>Enabled</th>
+                        <th class="actions-col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>${schedules.map(scheduleRowHtml).join('')}</tbody>
+            </table>
+        </div>`;
+}
+
+function scheduleRowHtml(schedule) {
+    const nextRunText = schedule.enabled
+        ? formatRelativeTime(parseServerLocalTimestamp(schedule.next_run))
+        : 'Paused';
+    return `
+        <tr>
+            <td>
+                <span class="cell-title">${escapeHtml(schedule.session_name)}</span>
+                <span class="cell-subtitle" title="${escapeHtml(schedule.session_url)}">${escapeHtml(urlHost(schedule.session_url))}</span>
+            </td>
+            <td>${formatFrequency(schedule.frequency_minutes)}</td>
+            <td title="${escapeHtml(schedule.next_run || '')}">${nextRunText}</td>
+            <td>
+                <label class="switch">
+                    <input type="checkbox" role="switch" data-schedule-id="${schedule.id}" aria-label="Enabled" ${schedule.enabled ? 'checked' : ''}>
+                    <span class="switch-track"></span>
+                </label>
+            </td>
+            <td class="actions-col">
+                <button type="button" class="btn btn-ghost-danger btn-small" data-delete-schedule-id="${schedule.id}">Delete</button>
+            </td>
+        </tr>`;
+}
+
+function toggleSwitchedSchedule(event) {
+    const scheduleSwitch = event.target.closest('[data-schedule-id]');
+    if (scheduleSwitch) {
+        toggleSchedule(Number(scheduleSwitch.dataset.scheduleId), scheduleSwitch.checked);
+    }
+}
+
+function deleteClickedSchedule(event) {
+    const deleteButton = event.target.closest('[data-delete-schedule-id]');
+    if (deleteButton) {
+        deleteSchedule(Number(deleteButton.dataset.deleteScheduleId));
     }
 }
 
@@ -481,7 +776,7 @@ async function toggleSchedule(scheduleId, enabled) {
 }
 
 async function deleteSchedule(scheduleId) {
-    if (!confirm('Delete this schedule?')) return;
+    if (!await askConfirmation('Delete this schedule? The session stays.', 'Delete schedule')) return;
 
     try {
         await apiFetch(`/schedules/${scheduleId}`, { method: 'DELETE' });
@@ -492,100 +787,210 @@ async function deleteSchedule(scheduleId) {
     }
 }
 
-// ==================== DATA ====================
+// ==================== RUNS ====================
 
-async function loadData() {
+async function loadRuns() {
     try {
-        const response = await apiFetch(`/data?limit=20`);
-        const data = await response.json();
-
-        renderData(data);
+        const response = await apiFetch(`/runs?limit=${RUNS_LIST_LIMIT}`);
+        if (!response.ok) return;
+        latestRuns = await response.json();
+        renderRunRows(byId('runs-table-body'), latestRuns);
+        renderRunRows(byId('overview-runs-body'), latestRuns.slice(0, OVERVIEW_RUNS_COUNT));
     } catch (error) {
-        console.error('Error loading data:', error);
+        console.error('Error loading runs:', error);
     }
 }
 
-function renderData(dataList) {
-    const container = document.getElementById('data-list');
+function renderRunRows(runsTableBody, runs) {
+    if (runs.length === 0) {
+        runsTableBody.innerHTML = '<tr><td colspan="6" class="table-note">No runs yet. Replay a session to extract data.</td></tr>';
+        return;
+    }
+    runsTableBody.innerHTML = runs.map(runRowHtml).join('');
+}
 
-    if (dataList.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">📊</div>
-                <div class="empty-state-text">No data yet</div>
-                <p>Replay a session to extract data</p>
-            </div>
-        `;
+function runRowHtml(run) {
+    const failedWithError = run.status === 'failed' && run.error;
+    return `
+        <tr class="run-row" data-run-id="${run.id}" tabindex="0"${failedWithError ? ` title="${escapeHtml(run.error)}"` : ''}>
+            <td>${statusPillHtml(run.status)}</td>
+            <td class="run-session-cell">
+                <span class="run-session-name">${escapeHtml(run.session_name)}</span>
+                ${failedWithError ? `<span class="run-error-line">${escapeHtml(run.error)}</span>` : ''}
+            </td>
+            <td class="col-trigger">${escapeHtml(run.triggered_by || MISSING_VALUE)}</td>
+            <td class="num">${formatCount(run.items_count)}</td>
+            <td class="num col-duration">${formatDuration(run.duration_ms)}</td>
+            <td title="${escapeHtml(run.extracted_at)}">${formatRelativeTime(parseUtcTimestamp(run.extracted_at))}</td>
+        </tr>`;
+}
+
+function statusPillHtml(runStatus) {
+    return runStatus === 'failed'
+        ? '<span class="pill pill-failed">Failed</span>'
+        : '<span class="pill pill-success">Success</span>';
+}
+
+function openClickedRun(event) {
+    const runRow = event.target.closest('.run-row');
+    if (runRow) {
+        openRunViewer(Number(runRow.dataset.runId));
+    }
+}
+
+function openRunOnEnter(event) {
+    if (event.key === 'Enter') {
+        openClickedRun(event);
+    }
+}
+
+// ==================== RUN VIEWER ====================
+
+// The run summaries carry no records, so the viewer reads them through the JSON export, which
+// returns any one run's records by its id.
+async function openRunViewer(runId) {
+    const runSummary = latestRuns.find((run) => run.id === runId);
+    viewedRunId = runId;
+    viewedRunRecords = [];
+    renderRunViewerHeader(runSummary);
+    byId('run-viewer-records').innerHTML = '<p class="table-note">Loading records...</p>';
+    byId('run-viewer-json').textContent = '';
+    renderExportFields([]);
+    showJsonExportOptions();
+    selectRunViewerTab('table');
+    byId('run-viewer').showModal();
+
+    try {
+        const response = await apiFetch(`/data/${runId}/export?format=json`);
+        const responseBody = await response.json();
+        if (viewedRunId !== runId) return;
+        if (!response.ok) {
+            byId('run-viewer-records').innerHTML = `<p class="table-note">${escapeHtml(responseBody.error)}</p>`;
+            return;
+        }
+        viewedRunRecords = responseBody;
+        const columnNames = recordColumnNames(viewedRunRecords);
+        byId('run-viewer-records').innerHTML = recordsTableHtml(viewedRunRecords, columnNames);
+        byId('run-viewer-json').textContent = JSON.stringify(viewedRunRecords, null, 2);
+        renderExportFields(columnNames);
+    } catch (error) {
+        showNotification('Error loading run: ' + error.message, 'error');
+    }
+}
+
+function renderRunViewerHeader(runSummary) {
+    byId('run-viewer-title').textContent = runSummary.session_name;
+    const itemsCount = runSummary.items_count;
+    byId('run-viewer-meta').innerHTML = `
+        ${statusPillHtml(runSummary.status)}
+        <span>Run #${runSummary.id}</span>
+        <span>${formatCount(itemsCount)} ${itemsCount === 1 ? 'item' : 'items'}</span>
+        <span>${formatDuration(runSummary.duration_ms)}</span>
+        <span>${escapeHtml(runSummary.triggered_by || 'unknown trigger')}</span>
+        <span title="${escapeHtml(runSummary.extracted_at)}">${formatRelativeTime(parseUtcTimestamp(runSummary.extracted_at))}</span>`;
+    const runError = byId('run-viewer-error');
+    runError.textContent = runSummary.error || '';
+    runError.hidden = !runSummary.error;
+}
+
+// Table records and picked-element rows are both flat objects; a Set keeps first-seen key order.
+function recordColumnNames(records) {
+    return [...new Set(records.flatMap((record) => Object.keys(record)))];
+}
+
+function recordsTableHtml(records, columnNames) {
+    if (records.length === 0) {
+        return '<p class="table-note">This run extracted no records.</p>';
+    }
+    const headerCells = columnNames.map((columnName) => `<th>${escapeHtml(columnName)}</th>`).join('');
+    const bodyRows = records.map((record, recordIndex) => {
+        const cells = columnNames.map((columnName) => {
+            const cellText = escapeHtml(recordCellText(record[columnName]));
+            return `<td title="${cellText}">${cellText}</td>`;
+        }).join('');
+        return `<tr><td class="num row-number">${recordIndex + 1}</td>${cells}</tr>`;
+    }).join('');
+    return `
+        <table class="data-table records-table">
+            <thead><tr><th class="num">#</th>${headerCells}</tr></thead>
+            <tbody>${bodyRows}</tbody>
+        </table>`;
+}
+
+function recordCellText(cellValue) {
+    if (cellValue === undefined || cellValue === null) {
+        return '';
+    }
+    return typeof cellValue === 'object' ? JSON.stringify(cellValue) : String(cellValue);
+}
+
+function selectRunViewerTab(tabName) {
+    for (const shownTabName of ['table', 'json']) {
+        const isSelected = shownTabName === tabName;
+        byId(`run-viewer-${shownTabName}-tab`).setAttribute('aria-selected', String(isSelected));
+        byId(`run-viewer-${shownTabName}-panel`).hidden = !isSelected;
+    }
+}
+
+function renderExportFields(columnNames) {
+    byId('export-fields-list').innerHTML = columnNames.length === 0
+        ? '<span class="muted">No fields to pick.</span>'
+        : columnNames.map((columnName) => `
+            <label class="field-chip">
+                <input type="checkbox" value="${escapeHtml(columnName)}" checked>
+                <span>${escapeHtml(columnName)}</span>
+            </label>`).join('');
+}
+
+// envelope and pretty are refused by the server for any format but JSON.
+function showJsonExportOptions() {
+    byId('export-json-options').hidden = byId('export-format-select').value !== 'json';
+}
+
+function downloadViewedRun() {
+    const exportFormat = byId('export-format-select').value;
+    const fieldCheckboxes = [...byId('export-fields-list').querySelectorAll('input[type="checkbox"]')];
+    const checkedFieldNames = fieldCheckboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value);
+    if (fieldCheckboxes.length > 0 && checkedFieldNames.length === 0) {
+        showNotification('Pick at least one field to export', 'error');
         return;
     }
 
-    container.innerHTML = dataList.map(item => `
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">${escapeHtml(item.session_name)}</h3>
-                <div class="card-meta">
-                    <span>📅 ${formatDate(item.extracted_at)}</span>
-                    <span>📊 ${item.data.length} items</span>
-                </div>
-            </div>
-            
-            <div style="max-height: 200px; overflow-y: auto; margin: 15px 0;">
-                ${item.data.slice(0, 5).map(entry => `
-                    <div style="padding: 8px; background: var(--bg-card); margin-bottom: 8px; border-radius: 6px;">
-                        ${item.has_table ? renderTableRecord(entry) : renderPickedValue(entry)}
-                    </div>
-                `).join('')}
-                ${item.data.length > 5 ? `<p style="color: var(--text-secondary); text-align: center;">+ ${item.data.length - 5} more items</p>` : ''}
-            </div>
-            
-            <div class="card-actions">
-                <button class="btn btn-primary btn-small" onclick="downloadData(${item.id}, 'json')">
-                    💾 JSON
-                </button>
-                <button class="btn btn-secondary btn-small" onclick="downloadData(${item.id}, 'csv')">
-                    📄 CSV
-                </button>
-                <button class="btn btn-secondary btn-small" onclick="downloadData(${item.id}, 'jsonl')">
-                    📃 JSONL
-                </button>
-            </div>
-        </div>
-    `).join('');
-}
-
-function renderPickedValue(pickedValue) {
-    return `
-        <strong style="color: var(--primary)">${escapeHtml(pickedValue.label || pickedValue.selector)}</strong><br>
-        <span style="color: var(--text-secondary); font-size: 0.9rem;">${escapeHtml(pickedValue.value.substring(0, 100))}</span>
-    `;
-}
-
-function renderTableRecord(tableRecord) {
-    return Object.entries(tableRecord).map(([columnName, cellValue]) => `
-        <strong style="color: var(--primary)">${escapeHtml(columnName)}</strong>:
-        <span style="color: var(--text-secondary); font-size: 0.9rem;">${escapeHtml(cellValue.substring(0, 100))}</span>
-    `).join('<br>');
-}
-
-async function viewData(sessionId) {
-    try {
-        const response = await apiFetch(`/data/${sessionId}`);
-        const data = await response.json();
-
-        if (data.length === 0) {
-            alert('No data available for this session yet. Try replaying it first.');
-            return;
-        }
-
-        // Scroll to data section
-        document.getElementById('data-section').scrollIntoView({ behavior: 'smooth' });
-    } catch (error) {
-        showNotification('Error loading data: ' + error.message, 'error');
+    const exportParameters = new URLSearchParams({ format: exportFormat });
+    if (checkedFieldNames.length < fieldCheckboxes.length) {
+        exportParameters.set('fields', checkedFieldNames.join(','));
     }
+    if (exportFormat === 'json') {
+        if (byId('export-envelope-checkbox').checked) {
+            exportParameters.set('envelope', '1');
+        }
+        if (!byId('export-pretty-checkbox').checked) {
+            exportParameters.set('pretty', '0');
+        }
+    }
+    downloadFromApi(`/data/${viewedRunId}/export?${exportParameters}`);
 }
 
-function downloadData(dataId, format) {
-    downloadFromApi(`/data/${dataId}/export?format=${format}`);
+// ==================== CONFIRMATION AND CLIPBOARD ====================
+
+function askConfirmation(question, acceptLabel) {
+    const confirmDialog = byId('confirm-dialog');
+    byId('confirm-message').textContent = question;
+    byId('confirm-accept-btn').textContent = acceptLabel;
+    confirmDialog.returnValue = '';
+    confirmDialog.showModal();
+    return new Promise((resolve) => {
+        confirmDialog.addEventListener('close', () => resolve(confirmDialog.returnValue === 'accept'), { once: true });
+    });
+}
+
+async function copyText(copiedText, successMessage) {
+    try {
+        await navigator.clipboard.writeText(copiedText);
+        showNotification(successMessage, 'success');
+    } catch (error) {
+        showNotification('Could not copy: ' + error.message, 'error');
+    }
 }
 
 // ==================== API ACCESS ====================
@@ -640,48 +1045,88 @@ function attachmentFilename(contentDisposition) {
     return /filename="?([^";]+)"?/i.exec(contentDisposition)[1];
 }
 
-// ==================== UTILITIES ====================
+// ==================== FORMATTING ====================
 
-function formatDate(dateString) {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleString();
+// SQLite's CURRENT_TIMESTAMP, which fills created_at, last_run and extracted_at, is UTC text
+// with no zone mark.
+function parseUtcTimestamp(timestampText) {
+    return timestampText ? new Date(timestampText.replace(' ', 'T') + 'Z') : null;
 }
 
+// A schedule's next_run is written by Python's datetime.now(), the server's local time, also with
+// no zone mark. Read as the browser's local time, it is right when both share a time zone.
+function parseServerLocalTimestamp(timestampText) {
+    return timestampText ? new Date(timestampText.replace(' ', 'T')) : null;
+}
+
+const relativeTimeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+const RELATIVE_TIME_UNITS = [
+    ['year', 31536000],
+    ['month', 2592000],
+    ['week', 604800],
+    ['day', 86400],
+    ['hour', 3600],
+    ['minute', 60],
+    ['second', 1]
+];
+
+function formatRelativeTime(moment) {
+    if (!moment || Number.isNaN(moment.getTime())) {
+        return MISSING_VALUE;
+    }
+    const secondsFromNow = (moment.getTime() - Date.now()) / 1000;
+    const [unitName, unitSeconds] = RELATIVE_TIME_UNITS.find(
+        ([, unitLengthSeconds]) => Math.abs(secondsFromNow) >= unitLengthSeconds
+    ) || ['second', 1];
+    return relativeTimeFormat.format(Math.round(secondsFromNow / unitSeconds), unitName);
+}
+
+function formatDuration(durationMs) {
+    if (durationMs === null || durationMs === undefined) {
+        return MISSING_VALUE;
+    }
+    if (durationMs < 1000) {
+        return `${durationMs} ms`;
+    }
+    if (durationMs < 60000) {
+        return `${(durationMs / 1000).toFixed(1)} s`;
+    }
+    const totalSeconds = Math.round(durationMs / 1000);
+    return `${Math.floor(totalSeconds / 60)} min ${totalSeconds % 60} s`;
+}
+
+function formatFrequency(frequencyMinutes) {
+    if (frequencyMinutes % 1440 === 0) {
+        return `Every ${frequencyMinutes / 1440} d`;
+    }
+    if (frequencyMinutes % 60 === 0) {
+        return `Every ${frequencyMinutes / 60} h`;
+    }
+    return `Every ${frequencyMinutes} min`;
+}
+
+function formatCount(count) {
+    return Number(count || 0).toLocaleString();
+}
+
+// innerHTML escapes <, > and & but leaves quotes, and these strings also go into attribute values.
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.innerHTML.replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
 
+// ==================== TOASTS ====================
+
 function showNotification(message, type = 'info') {
-    // Simple notification - could be enhanced with a toast library
-    const colors = {
-        success: 'var(--success)',
-        error: 'var(--danger)',
-        info: 'var(--primary)',
-        warning: 'var(--warning)'
-    };
-
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: ${colors[type]};
-        color: white;
-        padding: 16px 24px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        z-index: 10000;
-        animation: fadeIn 0.3s ease;
-    `;
-    notification.textContent = message;
-
-    document.body.appendChild(notification);
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    toast.textContent = message;
+    byId('toast-region').append(toast);
 
     setTimeout(() => {
-        notification.style.animation = 'fadeOut 0.3s ease';
-        setTimeout(() => notification.remove(), 300);
-    }, 3000);
+        toast.classList.add('toast-leaving');
+        setTimeout(() => toast.remove(), 200);
+    }, TOAST_DURATION_MS[type]);
 }
